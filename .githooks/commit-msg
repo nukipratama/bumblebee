@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Conventional Commits guard.
+set -euo pipefail
+
+PATTERN='^(feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(\([a-z0-9_-]+\))?!?: .+'
+SUBJECT=$(grep -v '^#' "$1" | grep -v '^[[:space:]]*$' | head -n 1 || true)
+
+if ! [[ "$SUBJECT" =~ $PATTERN ]]; then
+  echo "Commit message must follow Conventional Commits:" >&2
+  echo "  type(scope?): subject" >&2
+  echo "  e.g. feat(slack): add /status command" >&2
+  echo "  Allowed types: feat fix chore docs refactor test perf build ci style revert" >&2
+  echo "  Got: $SUBJECT" >&2
+  exit 1
+fi
