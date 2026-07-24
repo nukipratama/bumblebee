@@ -4,7 +4,7 @@
   "description": "LIMO team's general-purpose Slack bot — successor to Optimus.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
