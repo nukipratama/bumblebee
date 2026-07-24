@@ -10,7 +10,7 @@ When mentioned, Bumblebee answers using **Azure OpenAI** — and it's thread-awa
 
 - TypeScript + [`@slack/bolt`](https://slack.dev/bolt-js) (Node 24 LTS)
 - Socket Mode (outbound WebSocket, no inbound URL)
-- Docker + docker-compose (runs on the homelab)
+- Docker + docker-compose (runs on a self-hosted host)
 
 ## Slack app setup (one-time)
 
@@ -55,7 +55,7 @@ npm run dev      # tsx watch, hot reload
 
 On start you should see `⚡️ Bumblebee running (socket mode)`.
 
-## Run on the homelab (Docker)
+## Run on the deploy host (Docker)
 
 ```bash
 docker compose up -d --build
@@ -66,12 +66,12 @@ The container uses `restart: always`, so it comes back after reboots.
 
 ## Deployment (CI/CD)
 
-Pushes to `main` auto-deploy to the homelab via GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
+Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
 - **On every PR and push:** typecheck, build, prod-dependency audit, and a gitleaks secret scan, gated by a single required `ci-gate` check.
 - **On push to `main` only:** the `deploy` job runs on a **self-hosted runner** labeled `homelab`, builds the image from [compose.prod.yaml](compose.prod.yaml), rolls the container, and healthchecks by confirming the container is running and logged its startup line.
 
-**Homelab prerequisites (one-time):**
+**Deploy host prerequisites (one-time):**
 
 1. Register a self-hosted GitHub Actions runner on this repo with the label `homelab` (Docker available to the runner user).
 2. Place the production secrets at **`/opt/bumblebee/.env`** (root-owned, `640`, runner-readable) — same variables as [.env.example](.env.example). `compose.prod.yaml` loads them via `env_file`; nothing flows through GitHub Actions secrets.
