@@ -1,0 +1,8 @@
+.claude/settings.local.json
+
+.env
+
+node_modules/
+dist/
+*.log
+.DS_Store
