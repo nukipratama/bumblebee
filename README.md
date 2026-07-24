@@ -1,6 +1,6 @@
 # 🐝 Bumblebee
 
-LIMO / mamikos-be team's general-purpose Slack bot — the successor to **Optimus**.
+LIMO team's general-purpose Slack bot — the successor to **Optimus**.
 
 Bumblebee runs as a long-running, interactive service that connects to Slack over **Socket Mode** (no public endpoint required) and talks both ways: mention it, message it, or use its slash commands and it responds right in the channel.
 
