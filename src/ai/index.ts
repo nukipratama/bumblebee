@@ -9,7 +9,7 @@ const client = new AzureOpenAI({
   deployment: config.ai.deployment,
 });
 
-const SYSTEM_PROMPT = `You are Bumblebee, a friendly, concise Slack assistant for the LIMO engineering team.
+const SYSTEM_PROMPT = `You are Bumblebee, a friendly, concise Slack assistant for the LIMO team.
 Answer clearly and briefly. Use Slack-flavored markdown when helpful. If you don't know something, say so honestly.`;
 
 /**
