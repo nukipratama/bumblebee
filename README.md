@@ -19,7 +19,7 @@ Do this once at [api.slack.com/apps](https://api.slack.com/apps):
 1. **Create app** → *From scratch* → pick the workspace.
 2. **Socket Mode** → enable → generate an **app-level token** (scope `connections:write`). This is your `SLACK_APP_TOKEN` (`xapp-…`).
 3. **OAuth & Permissions** → add bot scopes: `chat:write`, `app_mentions:read`, `commands`, and — for thread-aware AI replies — `channels:history` (public channels) plus `groups:history` (private channels). *Install to Workspace* → copy the **Bot User OAuth Token**. This is your `SLACK_BOT_TOKEN` (`xoxb-…`). Re-add scopes later → **Reinstall to Workspace**.
-4. **Slash Commands** → create `/bumblebee` (with Socket Mode no request URL is needed).
+4. **Slash Commands** → create `/bee-status` (with Socket Mode no request URL is needed).
 5. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
 6. Invite the bot to a test channel: `/invite @Bumblebee`.
 
@@ -75,12 +75,17 @@ Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.githu
 
 1. Register a self-hosted GitHub Actions runner on this repo with the label `homelab` (Docker available to the runner user).
 2. Place the production secrets at **`/opt/bumblebee/.env`** (root-owned, `640`, runner-readable) — same variables as [.env.example](.env.example). `compose.prod.yaml` loads them via `env_file`; nothing flows through GitHub Actions secrets.
+3. Create the SQLite data directory, owned by the container's `node` user (uid 1000): `sudo mkdir -p /opt/bumblebee/data && sudo chown -R 1000:1000 /opt/bumblebee/data`. `compose.prod.yaml` bind-mounts it to `/app/data`, so the database survives deploys.
+
+### Persistence
+
+State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). Today it records per-request Azure OpenAI token usage, surfaced via `/bee-status`.
 
 ## Verify
 
 1. Logs show `⚡️ Bumblebee running (socket mode)` with no auth errors.
 2. In the test channel, `@Bumblebee what's 2+2?` → bot replies in-thread via Azure OpenAI. Ask a follow-up in the same thread → it keeps context.
-3. `/bumblebee` → bot responds with a status message.
+3. `/bee-status` → bot responds with a status message plus an AI token-usage summary.
 
 ## Project layout
 
@@ -90,8 +95,11 @@ src/
 ├── config.ts           # load + validate env
 ├── ai/
 │   └── index.ts        # Azure OpenAI client + generateReply()
+├── db/
+│   ├── index.ts        # node:sqlite connection + schema migrations
+│   └── ai-usage.ts     # record / summarize AI token usage
 └── listeners/
     ├── index.ts        # register() — wires listeners to the app
-    ├── command.ts      # /bumblebee slash command
+    ├── command.ts      # /bee-status slash command
     └── mention.ts      # app_mention → thread-aware AI reply
 ```

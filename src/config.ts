@@ -26,6 +26,7 @@ export const config = {
   slackBotToken: required("SLACK_BOT_TOKEN"),
   slackAppToken: required("SLACK_APP_TOKEN"),
   logLevel: parseLogLevel(process.env.LOG_LEVEL),
+  dbPath: process.env.DB_PATH ?? "./data/bumblebee.db",
   ai: {
     endpoint: required("AZURE_OPENAI_ENDPOINT"),
     apiKey: required("AZURE_OPENAI_API_KEY"),

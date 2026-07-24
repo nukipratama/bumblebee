@@ -18,6 +18,8 @@ services:
     logging: *logging
     env_file:
       - /opt/bumblebee/.env
+    volumes:
+      - /opt/bumblebee/data:/app/data
     # Socket Mode has no HTTP port; verify the node process is alive.
     healthcheck:
       test: ["CMD", "pgrep", "-f", "dist/index.js"]

@@ -1,5 +1,6 @@
 import { App } from "@slack/bolt";
 import { config } from "./config.js";
+import { initDb } from "./db/index.js";
 import { register } from "./listeners/index.js";
 
 const app = new App({
@@ -12,6 +13,7 @@ const app = new App({
 register(app);
 
 async function main(): Promise<void> {
+  initDb();
   await app.start();
   console.log("⚡️ Bumblebee running (socket mode)");
 }
