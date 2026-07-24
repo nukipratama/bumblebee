@@ -2,6 +2,8 @@ import type { App } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { generateReply } from "../ai/index.js";
+import { config } from "../config.js";
+import { recordAiUsage } from "../db/ai-usage.js";
 
 const HISTORY_LIMIT = 20;
 
@@ -63,9 +65,20 @@ export function registerMention(app: App): void {
       // `markdown_text` lets Slack render the model's standard Markdown natively.
       await client.chat.postMessage({
         channel: event.channel,
-        markdown_text: reply,
+        markdown_text: reply.text,
         thread_ts: threadTs,
       });
+      // Best-effort usage accounting — never let a DB hiccup break the reply.
+      try {
+        recordAiUsage({
+          slackUserId: event.user,
+          channelId: event.channel,
+          model: config.ai.deployment,
+          ...reply.usage,
+        });
+      } catch (dbError) {
+        logger.error("Failed to record AI usage", dbError);
+      }
     } catch (error) {
       logger.error("AI reply failed", error);
       await client.chat.postMessage({
