@@ -6,11 +6,9 @@ Bumblebee runs as a long-running, interactive service that connects to Slack ove
 
 When mentioned, Bumblebee answers using **Azure OpenAI** — and it's thread-aware, so it holds a conversation within a thread.
 
-> **Milestone 0/1** — foundation: a Dockerized TypeScript + Slack Bolt app that proves the two-way loop (Slack → bot → reply), now with an Azure OpenAI–backed conversational reply. Reminders, rotations, and other features land in later milestones.
-
 ## Stack
 
-- TypeScript + [`@slack/bolt`](https://slack.dev/bolt-js) (Node 22 LTS)
+- TypeScript + [`@slack/bolt`](https://slack.dev/bolt-js) (Node 24 LTS)
 - Socket Mode (outbound WebSocket, no inbound URL)
 - Docker + docker-compose (runs on the homelab)
 
@@ -27,7 +25,7 @@ Do this once at [api.slack.com/apps](https://api.slack.com/apps):
 
 ### App display (optional, for flavor)
 
-- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack — reminders, rotations, and ChatOps for the LIMO team. 🐝🤖`
+- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack — an AI-powered assistant for the LIMO team. 🐝🤖`
 - **Background color:** `#111111`
 
 ## Configuration
