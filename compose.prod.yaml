@@ -18,8 +18,11 @@ services:
     logging: *logging
     env_file:
       - /opt/bumblebee/.env
+    # Named volume (not a bind mount): Docker seeds it from the image's
+    # node-owned /app/data, so uid 1000 can write with no host prep. A bind
+    # mount would be created root-owned and break SQLite (CANTOPEN).
     volumes:
-      - /opt/bumblebee/data:/app/data
+      - bumblebee-data:/app/data
     # Socket Mode has no HTTP port; verify the node process is alive.
     healthcheck:
       test: ["CMD", "pgrep", "-f", "dist/index.js"]
@@ -27,3 +30,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  bumblebee-data:

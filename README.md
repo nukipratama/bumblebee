@@ -75,11 +75,12 @@ Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.githu
 
 1. Register a self-hosted GitHub Actions runner on this repo with the label `homelab` (Docker available to the runner user).
 2. Place the production secrets at **`/opt/bumblebee/.env`** (root-owned, `640`, runner-readable) — same variables as [.env.example](.env.example). `compose.prod.yaml` loads them via `env_file`; nothing flows through GitHub Actions secrets.
-3. Create the SQLite data directory, owned by the container's `node` user (uid 1000): `sudo mkdir -p /opt/bumblebee/data && sudo chown -R 1000:1000 /opt/bumblebee/data`. `compose.prod.yaml` bind-mounts it to `/app/data`, so the database survives deploys.
 
 ### Persistence
 
 State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). Today it records per-request Azure OpenAI token usage, surfaced via `/bee-status`.
+
+In production the database is stored in the `bumblebee-data` **Docker named volume** (see [compose.prod.yaml](compose.prod.yaml)), so it survives deploys. A named volume is used deliberately: Docker seeds it from the image's `node`-owned `/app/data`, so the unprivileged container (uid 1000) can write with no host setup — a bind mount would be created root-owned and break SQLite. Inspect or back up the DB with `docker cp bumblebee:/app/data/bumblebee.db .`.
 
 ## Verify
 
