@@ -1,0 +1,13 @@
+services:
+  bumblebee:
+    build: .
+    container_name: bumblebee
+    env_file: .env
+    restart: always
+    healthcheck:
+      # Socket Mode has no HTTP port; just verify the node process is alive.
+      test: ["CMD", "pgrep", "-f", "dist/index.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

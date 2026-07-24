@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+if [ "$CURRENT_BRANCH" = "main" ]; then
+  cat >&2 <<EOF
+pre-commit: direct commits to 'main' are blocked.
+
+  → Create a feature branch:   git switch -c feat/your-change
+  → Push it:                   git push -u origin feat/your-change
+  → Open a PR + let CI run:    gh pr create --fill
+  → Merge via the GitHub UI once green.
+EOF
+  exit 1
+fi
+
+# --- Secret scan (gitleaks): block staged credential leaks before they ever
+# enter history. Runs on ALL staged files — a secret hides in a .env, .json,
+# .yml or .md just as easily as in code.
+if [ "${SKIP_GITLEAKS:-0}" != "1" ]; then
+  if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks git --staged --redact --no-banner; then
+      cat >&2 <<'EOF'
+
+pre-commit: gitleaks flagged a possible secret in your staged changes (see above).
+
+  → Real credential?  Remove it from the diff AND rotate it (assume it's burned).
+  → False positive?   Add an allowlist entry to .gitleaks.toml.
+  → Bypass once:       SKIP_GITLEAKS=1 git commit ...   (not recommended)
+EOF
+      exit 1
+    fi
+  else
+    cat >&2 <<'EOF'
+pre-commit: gitleaks is not installed — the secret scan cannot run.
+
+  → Install:  brew install gitleaks   (https://github.com/gitleaks/gitleaks)
+  → Bypass once (not recommended):  SKIP_GITLEAKS=1 git commit ...
+EOF
+    exit 1
+  fi
+fi
+
+# Typecheck when TypeScript is staged. tsc runs on the whole project (not
+# staged-only) — a partial check misses cross-file type errors.
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
+[ -z "$STAGED_TS" ] && exit 0
+
+npm run typecheck

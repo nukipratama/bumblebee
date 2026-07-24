@@ -1,0 +1,27 @@
+name: bumblebee-prod
+
+# Bound the json-file log sink so a runaway stderr stream can't fill the host disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  bumblebee:
+    image: bumblebee/app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bumblebee
+    restart: always
+    logging: *logging
+    env_file:
+      - /opt/bumblebee/.env
+    # Socket Mode has no HTTP port; verify the node process is alive.
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "dist/index.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
