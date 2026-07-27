@@ -143,6 +143,13 @@ function requireReminder(channelId: string, code: string): Parsed<Reminder> {
     : { ok: false, error: `no reminder \`${code}\` in this channel` };
 }
 
+/** Unwraps a `Parsed<T>`, responding with the error and returning undefined on failure. */
+async function unwrap<T>(ctx: CommandContext, parsed: Parsed<T>): Promise<T | undefined> {
+  if (parsed.ok) return parsed.value;
+  await ctx.respond(parsed.error);
+  return undefined;
+}
+
 function readCode(args: Args): Parsed<string> {
   if (args.positionals.length > 1) {
     const extra = args.positionals.slice(1).join(" ");
@@ -199,27 +206,21 @@ function cadenceFitsDays(everyNWeeks: number, days: string): Parsed<true> {
 }
 
 async function handleAdd(ctx: CommandContext, args: Args): Promise<void> {
-  const code = readCode(args);
-  if (!code.ok) {
-    await ctx.respond(code.error);
+  const code = await unwrap(ctx, readCode(args));
+  if (code === undefined) return;
+  if (!CODE_PATTERN.test(code)) {
+    await ctx.respond(`\`${code}\` must be lowercase letters, numbers or dashes`);
     return;
   }
-  if (!CODE_PATTERN.test(code.value)) {
-    await ctx.respond(`\`${code.value}\` must be lowercase letters, numbers or dashes`);
-    return;
-  }
-  if (getReminder(ctx.channelId, code.value)) {
-    await ctx.respond(`\`${code.value}\` already exists in this channel`);
+  if (getReminder(ctx.channelId, code)) {
+    await ctx.respond(`\`${code}\` already exists in this channel`);
     return;
   }
 
-  const changes = readChanges(args);
-  if (!changes.ok) {
-    await ctx.respond(changes.error);
-    return;
-  }
+  const changes = await unwrap(ctx, readChanges(args));
+  if (changes === undefined) return;
 
-  const { at, message } = changes.value;
+  const { at, message } = changes;
   if (!at) {
     await ctx.respond("`--at HH:MM` is required");
     return;
@@ -229,17 +230,13 @@ async function handleAdd(ctx: CommandContext, args: Args): Promise<void> {
     return;
   }
 
-  const days = changes.value.days ?? EVERY_DAY;
-  const everyNWeeks = changes.value.everyNWeeks ?? 1;
-  const fits = cadenceFitsDays(everyNWeeks, days);
-  if (!fits.ok) {
-    await ctx.respond(fits.error);
-    return;
-  }
+  const days = changes.days ?? EVERY_DAY;
+  const everyNWeeks = changes.everyNWeeks ?? 1;
+  if ((await unwrap(ctx, cadenceFitsDays(everyNWeeks, days))) === undefined) return;
 
   await ctx.ask(
     [
-      `Add reminder \`${code.value}\`?`,
+      `Add reminder \`${code}\`?`,
       `*When*  ${formatSchedule({ at, days, everyNWeeks })}`,
       `*Message*\n${message}`,
       "",
@@ -247,57 +244,36 @@ async function handleAdd(ctx: CommandContext, args: Args): Promise<void> {
     ].join("\n"),
     {
       kind: "add",
-      reminder: {
-        channelId: ctx.channelId,
-        code: code.value,
-        at,
-        days,
-        message,
-        everyNWeeks,
-        createdBy: ctx.userId,
-      },
+      reminder: { channelId: ctx.channelId, code, at, days, message, everyNWeeks, createdBy: ctx.userId },
     },
   );
 }
 
 async function handleEdit(ctx: CommandContext, args: Args): Promise<void> {
-  const code = readCode(args);
-  if (!code.ok) {
-    await ctx.respond(code.error);
-    return;
-  }
+  const code = await unwrap(ctx, readCode(args));
+  if (code === undefined) return;
 
-  const existing = requireReminder(ctx.channelId, code.value);
-  if (!existing.ok) {
-    await ctx.respond(existing.error);
-    return;
-  }
+  const existing = await unwrap(ctx, requireReminder(ctx.channelId, code));
+  if (existing === undefined) return;
 
-  const changes = readChanges(args);
-  if (!changes.ok) {
-    await ctx.respond(changes.error);
-    return;
-  }
-  if (Object.keys(changes.value).length === 0) {
+  const changes = await unwrap(ctx, readChanges(args));
+  if (changes === undefined) return;
+  if (Object.keys(changes).length === 0) {
     await ctx.respond("nothing to change — pass `--at`, `--on`, `--message` or a cadence flag");
     return;
   }
 
-  const merged = { ...existing.value, ...changes.value };
-  const fits = cadenceFitsDays(merged.everyNWeeks, merged.days);
-  if (!fits.ok) {
-    await ctx.respond(fits.error);
-    return;
-  }
+  const merged = { ...existing, ...changes };
+  if ((await unwrap(ctx, cadenceFitsDays(merged.everyNWeeks, merged.days))) === undefined) return;
 
   const lines = [
-    `Edit reminder \`${code.value}\`?`,
-    `*Now*    ${formatSchedule(existing.value)}`,
+    `Edit reminder \`${code}\`?`,
+    `*Now*    ${formatSchedule(existing)}`,
     `*After*  ${formatSchedule(merged)}`,
   ];
-  if (changes.value.message) lines.push(`*New message*\n${changes.value.message}`);
+  if (changes.message) lines.push(`*New message*\n${changes.message}`);
 
-  await ctx.ask(lines.join("\n"), { kind: "edit", code: code.value, changes: changes.value });
+  await ctx.ask(lines.join("\n"), { kind: "edit", code, changes });
 }
 
 async function handleForExisting(
@@ -305,19 +281,13 @@ async function handleForExisting(
   args: Args,
   build: (reminder: Reminder) => { summary: string; action: PendingAction },
 ): Promise<void> {
-  const code = readCode(args);
-  if (!code.ok) {
-    await ctx.respond(code.error);
-    return;
-  }
+  const code = await unwrap(ctx, readCode(args));
+  if (code === undefined) return;
 
-  const existing = requireReminder(ctx.channelId, code.value);
-  if (!existing.ok) {
-    await ctx.respond(existing.error);
-    return;
-  }
+  const existing = await unwrap(ctx, requireReminder(ctx.channelId, code));
+  if (existing === undefined) return;
 
-  const { summary, action } = build(existing.value);
+  const { summary, action } = build(existing);
   await ctx.ask(summary, action);
 }
 
@@ -337,19 +307,12 @@ async function handleList(ctx: CommandContext): Promise<void> {
 }
 
 async function handleShow(ctx: CommandContext, args: Args): Promise<void> {
-  const code = readCode(args);
-  if (!code.ok) {
-    await ctx.respond(code.error);
-    return;
-  }
+  const code = await unwrap(ctx, readCode(args));
+  if (code === undefined) return;
 
-  const existing = requireReminder(ctx.channelId, code.value);
-  if (!existing.ok) {
-    await ctx.respond(existing.error);
-    return;
-  }
+  const reminder = await unwrap(ctx, requireReminder(ctx.channelId, code));
+  if (reminder === undefined) return;
 
-  const reminder = existing.value;
   await ctx.respond(
     [
       `*\`${reminder.code}\`*`,
@@ -415,14 +378,11 @@ async function handleHoliday(ctx: CommandContext, rest: string): Promise<void> {
     return;
   }
 
-  const date = parseDate(value);
-  if (!date.ok) {
-    await ctx.respond(date.error);
-    return;
-  }
+  const date = await unwrap(ctx, parseDate(value));
+  if (date === undefined) return;
 
-  if (action === "add") await handleHolidayAdd(ctx, date.value);
-  else await handleHolidayRemove(ctx, date.value);
+  if (action === "add") await handleHolidayAdd(ctx, date);
+  else await handleHolidayRemove(ctx, date);
 }
 
 interface ApplyResult {
@@ -444,6 +404,14 @@ function applyAdd(entry: PendingEntry, reminder: Reminder | undefined): ApplyRes
 function applyEdit(entry: PendingEntry, existing: Reminder | undefined): ApplyResult {
   const action = entry.action as Extract<PendingAction, { kind: "edit" }>;
   if (!existing) return { ephemeral: `\`${action.code}\` no longer exists — nothing changed` };
+
+  const merged = { ...existing, ...action.changes };
+  const fits = cadenceFitsDays(merged.everyNWeeks, merged.days);
+  if (!fits.ok) {
+    return {
+      ephemeral: `\`${action.code}\` changed since you asked — ${fits.error}. Nothing changed; run \`edit\` again.`,
+    };
+  }
 
   const { at, days, message, everyNWeeks } = action.changes;
   if (at !== undefined) setReminderAt(entry.channelId, action.code, at);
@@ -559,36 +527,33 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
 
-  const args = parseArgs(rest, FLAG_SPEC);
-  if (!args.ok) {
-    await ctx.respond(args.error);
-    return;
-  }
+  const args = await unwrap(ctx, parseArgs(rest, FLAG_SPEC));
+  if (args === undefined) return;
 
   switch (subcommand) {
     case "add":
-      return handleAdd(ctx, args.value);
+      return handleAdd(ctx, args);
     case "edit":
-      return handleEdit(ctx, args.value);
+      return handleEdit(ctx, args);
     case "show":
-      return handleShow(ctx, args.value);
+      return handleShow(ctx, args);
     case "pause":
-      return handleForExisting(ctx, args.value, (reminder) => ({
+      return handleForExisting(ctx, args, (reminder) => ({
         summary: `Pause \`${reminder.code}\`? It stops firing until you resume it.`,
         action: { kind: "setEnabled", code: reminder.code, enabled: false },
       }));
     case "resume":
-      return handleForExisting(ctx, args.value, (reminder) => ({
+      return handleForExisting(ctx, args, (reminder) => ({
         summary: `Resume \`${reminder.code}\`? It fires again at ${formatSchedule(reminder)}.`,
         action: { kind: "setEnabled", code: reminder.code, enabled: true },
       }));
     case "remove":
-      return handleForExisting(ctx, args.value, (reminder) => ({
+      return handleForExisting(ctx, args, (reminder) => ({
         summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,
         action: { kind: "remove", code: reminder.code },
       }));
     case "run":
-      return handleForExisting(ctx, args.value, (reminder) => ({
+      return handleForExisting(ctx, args, (reminder) => ({
         summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
         action: { kind: "run", code: reminder.code },
       }));

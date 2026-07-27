@@ -57,6 +57,11 @@ const REMINDER_COLUMNS = `id,
          created_by    AS createdBy,
          created_at    AS createdAt`;
 
+const HOLIDAY_COLUMNS = `date,
+         added_by         AS addedBy,
+         added_in_channel AS addedInChannel,
+         added_at         AS addedAt`;
+
 type ReminderRow = Omit<Reminder, "enabled"> & { enabled: number };
 
 const toReminder = (row: ReminderRow): Reminder => ({ ...row, enabled: row.enabled === 1 });
@@ -160,25 +165,13 @@ export function insertHoliday(holiday: Omit<Holiday, "addedAt">): void {
 }
 
 export function getHoliday(date: string): Holiday | undefined {
-  return stmt(
-    `SELECT date,
-            added_by         AS addedBy,
-            added_in_channel AS addedInChannel,
-            added_at         AS addedAt
-       FROM holidays
-      WHERE date = ?`,
-  ).get(date) as unknown as Holiday | undefined;
+  return stmt(`SELECT ${HOLIDAY_COLUMNS} FROM holidays WHERE date = ?`).get(date) as unknown as
+    | Holiday
+    | undefined;
 }
 
 export function listHolidays(): Holiday[] {
-  return stmt(
-    `SELECT date,
-            added_by         AS addedBy,
-            added_in_channel AS addedInChannel,
-            added_at         AS addedAt
-       FROM holidays
-      ORDER BY date`,
-  ).all() as unknown as Holiday[];
+  return stmt(`SELECT ${HOLIDAY_COLUMNS} FROM holidays ORDER BY date`).all() as unknown as Holiday[];
 }
 
 export function listHolidayDates(): Set<string> {
