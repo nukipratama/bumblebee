@@ -90,7 +90,7 @@ function formatRecurrence(reminder: Pick<Reminder, "days" | "everyNWeeks">): str
   return `${formatDays(reminder.days)}${cadence}`;
 }
 
-function formatSchedule(reminder: Pick<Reminder, "at" | "days" | "everyNWeeks">): string {
+export function formatSchedule(reminder: Pick<Reminder, "at" | "days" | "everyNWeeks">): string {
   return `${reminder.at} · ${formatRecurrence(reminder)}`;
 }
 
@@ -242,7 +242,7 @@ function readChanges(args: Args): Parsed<ReminderChanges> {
   return { ok: true, value: changes };
 }
 
-function cadenceFitsDays(everyNWeeks: number, days: string): Parsed<true> {
+export function cadenceFitsDays(everyNWeeks: number, days: string): Parsed<true> {
   const singleDay = days !== EVERY_DAY && !days.includes(",");
   if (everyNWeeks === 1 || singleDay) return { ok: true, value: true };
 
@@ -293,7 +293,18 @@ async function handleAdd(ctx: CommandContext, args: Args): Promise<void> {
     ].join("\n"),
     {
       kind: "add",
-      reminder: { channelId: ctx.channelId, code, at, days, message, everyNWeeks, createdBy: ctx.userId },
+      reminder: {
+        channelId: ctx.channelId,
+        code,
+        at,
+        days,
+        message,
+        // Typed into a slash command, so standard Markdown — the shortcut is
+        // the only path that captures mrkdwn.
+        bodyFormat: "markdown",
+        everyNWeeks,
+        createdBy: ctx.userId,
+      },
     },
   );
 }

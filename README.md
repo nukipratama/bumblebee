@@ -22,9 +22,10 @@ Do this once at [api.slack.com/apps](https://api.slack.com/apps):
 2. **Socket Mode** → enable → generate an **app-level token** (scope `connections:write`). This is your `SLACK_APP_TOKEN` (`xapp-…`).
 3. **OAuth & Permissions** → add bot scopes: `chat:write`, `app_mentions:read`, `commands`, and — for thread-aware AI replies — `channels:history` (public channels) plus `groups:history` (private channels). *Install to Workspace* → copy the **Bot User OAuth Token**. This is your `SLACK_BOT_TOKEN` (`xoxb-…`). Re-add scopes later → **Reinstall to Workspace**.
 4. **Slash Commands** → create `/bee-status`, and `/bee-remind` with **"Escape channels, users, and links sent to your app"** ticked (with Socket Mode no request URL is needed). Without that checkbox Slack sends the literal text `@nuki` instead of a user ID: mentions typed into a reminder message never render, and `host set` can't read a roster at all.
-5. **Interactivity & Shortcuts** → **turn Interactivity on**. Socket Mode delivers button clicks over the same WebSocket, but with this toggle off the Approve/Reject buttons render and silently do nothing.
-6. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
-7. Invite the bot to a test channel: `/invite @Bumblebee`. Slash commands work in channels the bot was never invited to, but a reminder there can't post.
+5. **Interactivity & Shortcuts** → **turn Interactivity on**. Socket Mode delivers button clicks over the same WebSocket, but with this toggle off the Approve/Reject and `Skip today` buttons render and silently do nothing.
+6. Still under **Interactivity & Shortcuts** → **Shortcuts** → *Create New Shortcut* → **On messages**. Name it `Make this a reminder`, description `Turn this message into a scheduled reminder`, and set the **Callback ID** to exactly `remind_from_message` — a mismatch leaves a menu item that does nothing, with no error anywhere. **Reinstall to Workspace** afterwards.
+7. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
+8. Invite the bot to a test channel: `/invite @Bumblebee`. Slash commands work in channels the bot was never invited to, but a reminder there can't post.
 
 ### App display (optional, for flavor)
 
@@ -50,6 +51,20 @@ cp .env.example .env
 | `AZURE_OPENAI_API_VERSION`  | API version (default `2024-10-21`)                     |
 
 ## Scheduled reminders
+
+### Creating one from a message you've written
+
+The easiest way, and the only one that gives you a real message box:
+
+1. Write the message in the channel exactly as you want it to post — line breaks, `@mentions`, bold, emoji.
+2. Hover it → **⋮ More actions** → **Make this a reminder**.
+3. Fill in the dialog: name, time, days, repeat, and an optional host rotation. **Create** makes it.
+
+No quotes, no `\n`, nothing to escape. The dialog's **Create** button *is* the confirmation, so there's no second Approve step — every other command still confirms. The channel gets the usual `@you added reminder …` line.
+
+The message posts back exactly as you wrote it: Bumblebee records that it came from Slack, and renders it as Slack markup rather than converting it. (`*word*` means bold in a Slack message but italic in the Markdown that `/bee-remind add` uses — converting between them would silently change your text.)
+
+### Managing them with `/bee-remind`
 
 `/bee-remind` manages reminders for the channel you run it in. Times are 24-hour, `Asia/Jakarta`.
 
@@ -85,6 +100,15 @@ Give a reminder a roster and it appends `🎙 Host: @someone` to each post, a di
 - **`host set` replaces the whole list.** Anyone who already hosted this lap stays hosted, whoever was up stays up, and a new name joins the current lap. The confirmation shows a diff so a name you dropped by accident is visible.
 - **`run` uses a turn**, exactly as a real fire does. A post that fails does not.
 - `show <code>` prints the whole roster: ✓ for those who have hosted this lap (with the date), → for whoever is up, and the rest below.
+
+### `Skip today`
+
+Every rotating reminder posts with a **`Skip today`** button. It acts immediately — no confirmation, since it's one click saying one thing.
+
+- **If you're the host**, and it's **within 30 minutes** of the reminder firing, the next person in the lap takes over today. The post rewrites itself to name them, and a thread reply says so. **You keep your turn** — you go back into the lap, you just aren't up today. After 30 minutes the button reports itself closed: the meeting has effectively happened, and rewriting who was responsible would revise history.
+- **If you're not the host**, you're added to an `🗓 Out today` line on the post, so the team can see who won't be there. No time limit on this one.
+
+Reminders without a roster don't carry the button — there'd be nobody to hand over to.
 
 **Every command that changes data asks first.** You get a private preview with Approve / Reject; only after Approve does it apply and announce the change in the channel. Confirmations expire after 5 minutes.
 
@@ -123,7 +147,7 @@ Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.githu
 
 ### Persistence
 
-State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). It records per-request Azure OpenAI token usage, plus reminders, holidays, host rosters and one row per reminder fired — all surfaced via `/bee-status` and `/bee-remind show`.
+State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). It records per-request Azure OpenAI token usage, plus reminders, holidays, host rosters, one row per reminder fired, and who skipped each occurrence — all surfaced via `/bee-status` and `/bee-remind show`.
 
 In production the database is stored in the `bumblebee-data` **Docker named volume** (see [compose.prod.yaml](compose.prod.yaml)), so it survives deploys. A named volume is used deliberately: Docker seeds it from the image's `node`-owned `/app/data`, so the unprivileged container (uid 1000) can write with no host setup — a bind mount would be created root-owned and break SQLite. Inspect or back up the DB with `docker cp bumblebee:/app/data/bumblebee.db .`.
 
@@ -134,7 +158,8 @@ In production the database is stored in the `bumblebee-data` **Docker named volu
 3. In the test channel, `@Bumblebee what's 2+2?` → bot replies in-thread via Azure OpenAI. Ask a follow-up in the same thread → it keeps context.
 4. `/bee-status` → status message, AI token-usage summary, and this channel's reminder counts, next fire and last scheduler tick.
 5. `/bee-remind add smoke --at <a minute from now> --message "hello"` → Approve → the channel confirms and the reminder posts on the minute.
-6. `/bee-remind host set smoke @you @someone-else` → Approve, then `/bee-remind run smoke` three times → a different host each time, each rendering as a real blue mention, and the third rolls the lap over. `/bee-remind show smoke` lists the roster with ✓ / → markers. Then `/bee-remind remove smoke`.
+6. On any message: **⋮ → Make this a reminder** → fill the dialog → **Create**. It posts back byte-identical to what you wrote, bold and bullets included.
+7. `/bee-remind host set smoke @you @someone-else` → Approve, then `/bee-remind run smoke` three times → a different host each time, each rendering as a real blue mention, and the third rolls the lap over. `/bee-remind show smoke` lists the roster with ✓ / → markers. Then `/bee-remind remove smoke`.
 
 ## Project layout
 
@@ -150,6 +175,7 @@ src/
 │   └── reminders.ts    # reminders, holidays, host rosters + fire history
 ├── scheduler/
 │   ├── index.ts        # startScheduler() — minute tick + fireReminder()
+│   ├── blocks.ts       # renders a reminder post — body, host, out-today, button (pure)
 │   ├── clock.ts        # local wall clock + the Jakarta TZ assertion
 │   ├── next.ts         # matches / cadenceOk / nextFire (pure)
 │   └── rotation.ts     # host lap draw + reordering (pure)
@@ -158,6 +184,8 @@ src/
     ├── command.ts      # /bee-status slash command
     ├── mention.ts      # app_mention → thread-aware AI reply
     ├── remind.ts       # /bee-remind + Approve/Reject buttons
+    ├── shortcut.ts     # "Make this a reminder" → modal → create
+    ├── skip.ts         # the Skip today button: handover + out-today
     ├── args.ts         # flag parsing / validation (pure)
     └── pending.ts      # confirmations awaiting a click (pure)
 ```

@@ -7,6 +7,7 @@ import {
   recordFire,
   type Reminder,
 } from "../db/reminders.js";
+import { fallbackText, reminderBlocks, type ReminderPost } from "./blocks.js";
 import { assertJakarta, daysBetween, localParts } from "./clock.js";
 import { cadenceOk, matches, requiredDaysSinceLastFire } from "./next.js";
 import { drawLap, pendingLap } from "./rotation.js";
@@ -51,9 +52,20 @@ export async function fireReminder(reminder: Reminder, ctx: FireContext): Promis
   const lap = pendingLap(roster);
   const host = lap[0];
 
+  // Only a rotating reminder can hand over, so only one carries the button.
+  const post: ReminderPost = {
+    body: reminder.message,
+    bodyFormat: reminder.bodyFormat,
+    host,
+    outToday: [],
+    skippable: roster.length > 0,
+    windowClosed: false,
+  };
+
   const posted = await ctx.client.chat.postMessage({
     channel: reminder.channelId,
-    markdown_text: host ? `${reminder.message}\n🎙 Host: <@${host}>` : reminder.message,
+    blocks: reminderBlocks(post),
+    text: fallbackText(post),
   });
 
   // Only now, so a failed post never costs anyone their turn.
