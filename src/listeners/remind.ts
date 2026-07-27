@@ -13,7 +13,6 @@ import {
   listHolidays,
   listHosts,
   listReminders,
-  pendingHosts,
   replaceHosts,
   setLap,
   setReminderAt,
@@ -105,6 +104,10 @@ const mention = (userId: string): string => `<@${userId}>`;
 const mentionList = (userIds: readonly string[]): string => userIds.map(mention).join(", ");
 
 const hasHosted = (member: Host): boolean => member.lapOrder === null;
+
+/** The pending lap, in order — `listHosts` already sorts hosted-first-then-pending. */
+const pendingLap = (roster: readonly Host[]): string[] =>
+  roster.filter((member) => !hasHosted(member)).map((member) => member.userId);
 
 /**
  * One list covering the whole roster, in lap order: who has been, who's up, who's
@@ -453,7 +456,7 @@ async function handleHostSet(
     return;
   }
 
-  const upNext = pendingHosts(reminder.id)[0];
+  const upNext = pendingLap(roster)[0];
   const keepsLead = upNext !== undefined && userIds.includes(upNext);
 
   await ctx.ask(
@@ -492,7 +495,7 @@ async function handleHostSkip(ctx: CommandContext, reminder: Reminder): Promise<
     return;
   }
 
-  const lap = pendingHosts(reminder.id);
+  const lap = pendingLap(roster);
   const upNext = lap[0]!;
   const after =
     lap.length > 1
@@ -692,7 +695,7 @@ function applyHostSet(
   if (!reminder) return goneSince(code);
 
   replaceHosts(reminder.id, userIds, planLap(listHosts(reminder.id), userIds));
-  const upNext = pendingHosts(reminder.id)[0];
+  const upNext = pendingLap(listHosts(reminder.id))[0];
 
   return {
     ephemeral: `Rotation for \`${code}\` set — ${userIds.length} people.`,
@@ -723,15 +726,16 @@ function applyHostSkip(
 ): ApplyResult {
   if (!reminder) return goneSince(code);
 
-  const roster = listHosts(reminder.id).map((member) => member.userId);
-  if (roster.length < 2) {
+  const roster = listHosts(reminder.id);
+  const rosterIds = roster.map((member) => member.userId);
+  if (rosterIds.length < 2) {
     return { ephemeral: `\`${code}\` no longer has enough people to skip — nothing changed` };
   }
 
-  const lap = pendingHosts(reminder.id);
+  const lap = pendingLap(roster);
   const skipped = lap[0]!;
-  // A one-person lap can't be reordered, so it rolls over instead — see gotcha 2.
-  const next = lap.length > 1 ? moveToBack(lap, skipped) : drawLapAvoiding(roster, skipped);
+  // A one-person lap can't be reordered, so it rolls over to a fresh order instead.
+  const next = lap.length > 1 ? moveToBack(lap, skipped) : drawLapAvoiding(rosterIds, skipped);
   setLap(reminder.id, next);
 
   return {
@@ -748,12 +752,12 @@ function applyHostNext(
 ): ApplyResult {
   if (!reminder) return goneSince(code);
 
-  const onRoster = listHosts(reminder.id).some((member) => member.userId === userId);
-  if (!onRoster) {
+  const roster = listHosts(reminder.id);
+  if (!roster.some((member) => member.userId === userId)) {
     return { ephemeral: `${mention(userId)} is no longer on \`${code}\` — nothing changed` };
   }
 
-  setLap(reminder.id, moveToFront(pendingHosts(reminder.id), userId));
+  setLap(reminder.id, moveToFront(pendingLap(roster), userId));
   return {
     ephemeral: `${mention(userId)} is up next on \`${code}\`.`,
     channel: `${mention(entry.userId)} put ${mention(userId)} up next on \`${code}\``,

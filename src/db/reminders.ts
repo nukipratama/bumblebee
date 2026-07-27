@@ -235,16 +235,6 @@ export function listHosts(reminderId: number): Host[] {
   ).all(reminderId) as unknown as Host[];
 }
 
-export function pendingHosts(reminderId: number): string[] {
-  const rows = stmt(
-    `SELECT user_id AS userId
-       FROM reminder_hosts
-      WHERE reminder_id = ? AND lap_order IS NOT NULL
-      ORDER BY lap_order`,
-  ).all(reminderId) as unknown as { userId: string }[];
-  return rows.map((row) => row.userId);
-}
-
 function writeLap(reminderId: number, lap: readonly string[]): void {
   stmt("UPDATE reminder_hosts SET lap_order = NULL WHERE reminder_id = ?").run(reminderId);
   const place = stmt(
