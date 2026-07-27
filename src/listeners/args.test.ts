@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   normalizeMentions,
+  parseUserMentions,
   parseArgs,
   parseAt,
   parseCadence,
@@ -160,5 +161,38 @@ describe("normalizeMentions", () => {
 
   it("leaves bare mentions and broadcasts untouched", () => {
     assert.equal(normalizeMentions("<@U123> <!channel> plain"), "<@U123> <!channel> plain");
+  });
+});
+
+describe("parseUserMentions", () => {
+  const ids = (tokens: string[]) => {
+    const parsed = parseUserMentions(tokens);
+    assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+    return parsed.value;
+  };
+
+  it("reads labelled and bare mentions, keeping the order given", () => {
+    assert.deepEqual(ids(["<@U1|alice>", "<@U2>", "<@W3|cara>"]), ["U1", "U2", "W3"]);
+  });
+
+  it("rejects a token that is not a person", () => {
+    for (const token of ["alice", "@alice", "<!channel>", "<#C1|eng>"]) {
+      const parsed = parseUserMentions([token]);
+      assert.equal(parsed.ok, false);
+    }
+  });
+
+  it("names the escaping setting when a mention arrives as plain text", () => {
+    const parsed = parseUserMentions(["@alice"]);
+    assert.ok(!parsed.ok && parsed.error.includes("Escape channels, users, and links"));
+  });
+
+  it("rejects the same person twice, however they are written", () => {
+    const parsed = parseUserMentions(["<@U1|alice>", "<@U1>"]);
+    assert.ok(!parsed.ok && parsed.error.includes("listed twice"));
+  });
+
+  it("rejects an empty list", () => {
+    assert.equal(parseUserMentions([]).ok, false);
   });
 });

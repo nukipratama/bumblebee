@@ -32,6 +32,21 @@ export interface Holiday {
   addedAt: string;
 }
 
+/** A roster member. `lapOrder` is their place in the current lap, or null once they've hosted it. */
+export interface Host {
+  userId: string;
+  lapOrder: number | null;
+}
+
+export interface FireRecord {
+  reminderId: number;
+  firedOn: string;
+  firedAt: Date;
+  hostUserId: string | null;
+  messageTs: string | null;
+  nextLap: readonly string[];
+}
+
 // Statements are prepared lazily (memoized) rather than at module load, because
 // the tables don't exist until initDb() runs its migrations at startup.
 const statements = new Map<string, StatementSync>();
@@ -43,6 +58,17 @@ function stmt(sql: string): StatementSync {
     statements.set(sql, prepared);
   }
   return prepared;
+}
+
+function transaction(work: () => void): void {
+  db.exec("BEGIN");
+  try {
+    work();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 const REMINDER_COLUMNS = `id,
@@ -144,9 +170,25 @@ export function deleteReminder(channelId: string, code: string): void {
   stmt("DELETE FROM reminders WHERE channel_id = ? AND code = ?").run(channelId, code);
 }
 
-/** Stamp the fire time from JS, never SQLite — see the last_fired_at gotcha. */
-export function markFired(id: number, firedAt: Date): void {
-  stmt("UPDATE reminders SET last_fired_at = ? WHERE id = ?").run(firedAt.toISOString(), id);
+/**
+ * Everything a successful post writes: the fire stamp, the history row, and the
+ * advanced lap. One transaction, because a crash between them would record a
+ * post whose host is still up next tomorrow.
+ *
+ * Stamps the time from JS, never SQLite — see the last_fired_at gotcha.
+ */
+export function recordFire(record: FireRecord): void {
+  transaction(() => {
+    stmt("UPDATE reminders SET last_fired_at = ? WHERE id = ?").run(
+      record.firedAt.toISOString(),
+      record.reminderId,
+    );
+    stmt(
+      `INSERT INTO reminder_fires (reminder_id, fired_on, host_user_id, message_ts)
+       VALUES (?, ?, ?, ?)`,
+    ).run(record.reminderId, record.firedOn, record.hostUserId, record.messageTs);
+    writeLap(record.reminderId, record.nextLap);
+  });
 }
 
 export function countReminders(channelId: string): { enabled: number; paused: number } {
@@ -181,4 +223,73 @@ export function listHolidayDates(): Set<string> {
 
 export function deleteHoliday(date: string): void {
   stmt("DELETE FROM holidays WHERE date = ?").run(date);
+}
+
+/** Roster rows for a reminder: those who have hosted this lap first, then the pending lap in order. */
+export function listHosts(reminderId: number): Host[] {
+  return stmt(
+    `SELECT user_id AS userId, lap_order AS lapOrder
+       FROM reminder_hosts
+      WHERE reminder_id = ?
+      ORDER BY lap_order`,
+  ).all(reminderId) as unknown as Host[];
+}
+
+export function pendingHosts(reminderId: number): string[] {
+  const rows = stmt(
+    `SELECT user_id AS userId
+       FROM reminder_hosts
+      WHERE reminder_id = ? AND lap_order IS NOT NULL
+      ORDER BY lap_order`,
+  ).all(reminderId) as unknown as { userId: string }[];
+  return rows.map((row) => row.userId);
+}
+
+function writeLap(reminderId: number, lap: readonly string[]): void {
+  stmt("UPDATE reminder_hosts SET lap_order = NULL WHERE reminder_id = ?").run(reminderId);
+  const place = stmt(
+    "UPDATE reminder_hosts SET lap_order = ? WHERE reminder_id = ? AND user_id = ?",
+  );
+  lap.forEach((userId, index) => place.run(index, reminderId, userId));
+}
+
+export function setLap(reminderId: number, lap: readonly string[]): void {
+  transaction(() => writeLap(reminderId, lap));
+}
+
+/**
+ * Replace the roster. Anyone in `userIds` but absent from `lap` is recorded as
+ * having already hosted this lap — which is how `host set` avoids handing
+ * someone a second turn. Callers build `lap` with `planLap`.
+ */
+export function replaceHosts(
+  reminderId: number,
+  userIds: readonly string[],
+  lap: readonly string[],
+): void {
+  transaction(() => {
+    stmt("DELETE FROM reminder_hosts WHERE reminder_id = ?").run(reminderId);
+    const add = stmt(
+      "INSERT INTO reminder_hosts (reminder_id, user_id, lap_order) VALUES (?, ?, ?)",
+    );
+    for (const userId of userIds) {
+      const place = lap.indexOf(userId);
+      add.run(reminderId, userId, place === -1 ? null : place);
+    }
+  });
+}
+
+export function clearHosts(reminderId: number): void {
+  stmt("DELETE FROM reminder_hosts WHERE reminder_id = ?").run(reminderId);
+}
+
+/** Most recent hosting date per user, which is what dates the ✓ rows in `show`. */
+export function lastHostedOn(reminderId: number): Map<string, string> {
+  const rows = stmt(
+    `SELECT host_user_id AS userId, MAX(fired_on) AS firedOn
+       FROM reminder_fires
+      WHERE reminder_id = ? AND host_user_id IS NOT NULL
+      GROUP BY host_user_id`,
+  ).all(reminderId) as unknown as { userId: string; firedOn: string }[];
+  return new Map(rows.map((row) => [row.userId, row.firedOn]));
 }

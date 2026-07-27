@@ -17,7 +17,11 @@ export type PendingAction =
   | { kind: "setEnabled"; code: string; enabled: boolean }
   | { kind: "run"; code: string }
   | { kind: "holidayAdd"; date: string }
-  | { kind: "holidayRemove"; date: string };
+  | { kind: "holidayRemove"; date: string }
+  | { kind: "hostSet"; code: string; userIds: string[] }
+  | { kind: "hostClear"; code: string }
+  | { kind: "hostSkip"; code: string }
+  | { kind: "hostNext"; code: string; userId: string };
 
 export interface PendingEntry {
   action: PendingAction;

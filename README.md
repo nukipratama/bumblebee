@@ -59,6 +59,8 @@ cp .env.example .env
 /bee-remind add sprint  --at 09:00 --message "Sprint planning" --on monday --every-2-week
 /bee-remind list · show <code> · edit <code> --… · pause <code> · resume <code>
 /bee-remind remove <code> · run <code>
+/bee-remind host set standup @alice @bob @cara · host clear <code>
+/bee-remind host skip <code> · host next <code> @who
 /bee-remind holiday add 2026-08-17 · holiday list · holiday remove 2026-08-17
 /bee-remind help
 ```
@@ -68,6 +70,20 @@ cp .env.example .env
 - **`--message`** posts exactly as stored. Use `\n` for a line break, and type `@someone` or `@channel` to mention them.
 - **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing. It does ignore `pause`.
 - **Holidays are global** — a date added in any channel skips reminders in every channel. `holiday list` shows who added each one and where.
+
+### Host rotation
+
+Give a reminder a roster and it appends `🎙 Host: @someone` to each post, a different person every time.
+
+```
+/bee-remind host set standup @alice @bob @cara
+```
+
+- **The order is shuffled, and nobody hosts twice until everyone has had a turn.** Each pass is a *lap*: the order is drawn when the lap starts and is visible from then on, so `show <code>` tells you when your turn is coming.
+- **`host skip`** moves whoever is up to the back of the lap — they keep their turn, they just aren't up today. **`host next @who`** puts someone up next.
+- **`host set` replaces the whole list.** Anyone who already hosted this lap stays hosted, whoever was up stays up, and a new name joins the current lap. The confirmation shows a diff so a name you dropped by accident is visible.
+- **`run` uses a turn**, exactly as a real fire does. A post that fails does not.
+- `show <code>` prints the whole roster: ✓ for those who have hosted this lap (with the date), → for whoever is up, and the rest below.
 
 **Every command that changes data asks first.** You get a private preview with Approve / Reject; only after Approve does it apply and announce the change in the channel. Confirmations expire after 5 minutes.
 
@@ -106,7 +122,7 @@ Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.githu
 
 ### Persistence
 
-State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). It records per-request Azure OpenAI token usage, plus reminders and holidays — all surfaced via `/bee-status`.
+State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). It records per-request Azure OpenAI token usage, plus reminders, holidays, host rosters and one row per reminder fired — all surfaced via `/bee-status` and `/bee-remind show`.
 
 In production the database is stored in the `bumblebee-data` **Docker named volume** (see [compose.prod.yaml](compose.prod.yaml)), so it survives deploys. A named volume is used deliberately: Docker seeds it from the image's `node`-owned `/app/data`, so the unprivileged container (uid 1000) can write with no host setup — a bind mount would be created root-owned and break SQLite. Inspect or back up the DB with `docker cp bumblebee:/app/data/bumblebee.db .`.
 
@@ -129,11 +145,12 @@ src/
 ├── db/
 │   ├── index.ts        # node:sqlite connection + schema migrations
 │   ├── ai-usage.ts     # record / summarize AI token usage
-│   └── reminders.ts    # reminders + holidays
+│   └── reminders.ts    # reminders, holidays, host rosters + fire history
 ├── scheduler/
 │   ├── index.ts        # startScheduler() — minute tick + fireReminder()
 │   ├── clock.ts        # local wall clock + the Jakarta TZ assertion
-│   └── next.ts         # matches / cadenceOk / nextFire (pure)
+│   ├── next.ts         # matches / cadenceOk / nextFire (pure)
+│   └── rotation.ts     # host lap draw + reordering (pure)
 └── listeners/
     ├── index.ts        # register() — wires listeners to the app
     ├── command.ts      # /bee-status slash command
