@@ -26,6 +26,26 @@ const migrations: string[] = [
      completion_tokens INTEGER NOT NULL,
      total_tokens      INTEGER NOT NULL
    )`,
+  `CREATE TABLE reminders (
+     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+     channel_id    TEXT    NOT NULL,
+     code          TEXT    NOT NULL,
+     at            TEXT    NOT NULL,
+     days          TEXT    NOT NULL,
+     message       TEXT    NOT NULL,
+     every_n_weeks INTEGER NOT NULL DEFAULT 1 CHECK (every_n_weeks IN (1, 2, 3)),
+     enabled       INTEGER NOT NULL DEFAULT 1,
+     last_fired_at TEXT,
+     created_by    TEXT    NOT NULL,
+     created_at    TEXT    NOT NULL,
+     UNIQUE (channel_id, code)
+   )`,
+  `CREATE TABLE holidays (
+     date             TEXT PRIMARY KEY,
+     added_by         TEXT NOT NULL,
+     added_in_channel TEXT NOT NULL,
+     added_at         TEXT NOT NULL
+   )`,
 ];
 
 /** Apply any pending schema migrations. Idempotent; safe to call on every boot. */

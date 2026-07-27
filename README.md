@@ -6,6 +6,8 @@ Bumblebee runs as a long-running, interactive service that connects to Slack ove
 
 When mentioned, Bumblebee answers using **Azure OpenAI** — and it's thread-aware, so it holds a conversation within a thread.
 
+It also posts **scheduled reminders**: a time, some weekdays and a message, stored in SQLite and managed at runtime with `/bee-remind`. No redeploy to add or change one.
+
 ## Stack
 
 - TypeScript + [`@slack/bolt`](https://slack.dev/bolt-js) (Node 24 LTS)
@@ -19,9 +21,10 @@ Do this once at [api.slack.com/apps](https://api.slack.com/apps):
 1. **Create app** → *From scratch* → pick the workspace.
 2. **Socket Mode** → enable → generate an **app-level token** (scope `connections:write`). This is your `SLACK_APP_TOKEN` (`xapp-…`).
 3. **OAuth & Permissions** → add bot scopes: `chat:write`, `app_mentions:read`, `commands`, and — for thread-aware AI replies — `channels:history` (public channels) plus `groups:history` (private channels). *Install to Workspace* → copy the **Bot User OAuth Token**. This is your `SLACK_BOT_TOKEN` (`xoxb-…`). Re-add scopes later → **Reinstall to Workspace**.
-4. **Slash Commands** → create `/bee-status` (with Socket Mode no request URL is needed).
-5. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
-6. Invite the bot to a test channel: `/invite @Bumblebee`.
+4. **Slash Commands** → create `/bee-status`, and `/bee-remind` with **"Escape channels, users, and links sent to your app"** ticked (with Socket Mode no request URL is needed). Without that checkbox Slack sends the literal text `@nuki` instead of a user ID, so mentions typed into a reminder message never render.
+5. **Interactivity & Shortcuts** → **turn Interactivity on**. Socket Mode delivers button clicks over the same WebSocket, but with this toggle off the Approve/Reject buttons render and silently do nothing.
+6. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
+7. Invite the bot to a test channel: `/invite @Bumblebee`. Slash commands work in channels the bot was never invited to, but a reminder there can't post.
 
 ### App display (optional, for flavor)
 
@@ -46,14 +49,39 @@ cp .env.example .env
 | `AZURE_OPENAI_DEPLOYMENT`   | Chat model **deployment** name                         |
 | `AZURE_OPENAI_API_VERSION`  | API version (default `2024-10-21`)                     |
 
+## Scheduled reminders
+
+`/bee-remind` manages reminders for the channel you run it in. Times are 24-hour, `Asia/Jakarta`.
+
+```
+/bee-remind add standup --at 09:00 --message "Standup time!" \
+                        --on monday,tuesday,wednesday,thursday,friday
+/bee-remind add sprint  --at 09:00 --message "Sprint planning" --on monday --every-2-week
+/bee-remind list · show <code> · edit <code> --… · pause <code> · resume <code>
+/bee-remind remove <code> · run <code>
+/bee-remind holiday add 2026-08-17 · holiday list · holiday remove 2026-08-17
+/bee-remind help
+```
+
+- **`--on`** takes `daily` (the default) or full day names — `monday,wednesday`. No ranges, no abbreviations.
+- **Cadence** is `--every-1-week` (default), `--every-2-week` or `--every-3-week`. The last two need exactly one day in `--on`, since the gap is measured in days.
+- **`--message`** posts exactly as stored. Use `\n` for a line break, and type `@someone` or `@channel` to mention them.
+- **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing. It does ignore `pause`.
+- **Holidays are global** — a date added in any channel skips reminders in every channel. `holiday list` shows who added each one and where.
+
+**Every command that changes data asks first.** You get a private preview with Approve / Reject; only after Approve does it apply and announce the change in the channel. Confirmations expire after 5 minutes.
+
 ## Run locally
 
 ```bash
 npm install
 npm run dev      # tsx watch, hot reload
+npm test         # node:test via tsx, pinned to TZ=Asia/Jakarta
 ```
 
 On start you should see `⚡️ Bumblebee running (socket mode)`.
+
+> ⚠️ **Don't run `npm run dev` while the deployed container is up.** Both connect to Slack with the same tokens, so both run their own scheduler tick and **every reminder posts twice into the real channel**. Use a scratch channel, or stop the container first.
 
 ## Run on the deploy host (Docker)
 
@@ -68,7 +96,7 @@ The container uses `restart: always`, so it comes back after reboots.
 
 Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
-- **On every PR and push:** typecheck, build, prod-dependency audit, and a gitleaks secret scan, gated by a single required `ci-gate` check.
+- **On every PR and push:** typecheck, tests, build, prod-dependency audit, and a gitleaks secret scan, gated by a single required `ci-gate` check.
 - **On push to `main` only:** the `deploy` job runs on a **self-hosted runner** labeled `homelab`, builds the image from [compose.prod.yaml](compose.prod.yaml), rolls the container, and healthchecks by confirming the container is running and logged its startup line.
 
 **Deploy host prerequisites (one-time):**
@@ -78,29 +106,39 @@ Pushes to `main` auto-deploy to the self-hosted host via GitHub Actions ([.githu
 
 ### Persistence
 
-State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). Today it records per-request Azure OpenAI token usage, surfaced via `/bee-status`.
+State lives in a SQLite database (Node's built-in `node:sqlite`) at `DB_PATH` (default `./data/bumblebee.db`; `/app/data/bumblebee.db` in the container). It records per-request Azure OpenAI token usage, plus reminders and holidays — all surfaced via `/bee-status`.
 
 In production the database is stored in the `bumblebee-data` **Docker named volume** (see [compose.prod.yaml](compose.prod.yaml)), so it survives deploys. A named volume is used deliberately: Docker seeds it from the image's `node`-owned `/app/data`, so the unprivileged container (uid 1000) can write with no host setup — a bind mount would be created root-owned and break SQLite. Inspect or back up the DB with `docker cp bumblebee:/app/data/bumblebee.db .`.
 
 ## Verify
 
-1. Logs show `⚡️ Bumblebee running (socket mode)` with no auth errors.
-2. In the test channel, `@Bumblebee what's 2+2?` → bot replies in-thread via Azure OpenAI. Ask a follow-up in the same thread → it keeps context.
-3. `/bee-status` → bot responds with a status message plus an AI token-usage summary.
+1. Logs show `⚡️ Bumblebee running (socket mode)` and **no** `TZ misconfigured` line.
+2. `docker exec bumblebee date` prints `WIB` / `+0700`, not UTC — proves `tzdata` made it into the image.
+3. In the test channel, `@Bumblebee what's 2+2?` → bot replies in-thread via Azure OpenAI. Ask a follow-up in the same thread → it keeps context.
+4. `/bee-status` → status message, AI token-usage summary, and this channel's reminder counts, next fire and last scheduler tick.
+5. `/bee-remind add smoke --at <a minute from now> --message "hello"` → Approve → the channel confirms and the reminder posts on the minute. Then `/bee-remind remove smoke`.
 
 ## Project layout
 
 ```
 src/
-├── index.ts            # bootstrap Bolt app (socket mode) + start
+├── index.ts            # bootstrap Bolt app (socket mode) + start + scheduler
 ├── config.ts           # load + validate env
 ├── ai/
 │   └── index.ts        # Azure OpenAI client + generateReply()
 ├── db/
 │   ├── index.ts        # node:sqlite connection + schema migrations
-│   └── ai-usage.ts     # record / summarize AI token usage
+│   ├── ai-usage.ts     # record / summarize AI token usage
+│   └── reminders.ts    # reminders + holidays
+├── scheduler/
+│   ├── index.ts        # startScheduler() — minute tick + fireReminder()
+│   ├── clock.ts        # local wall clock + the Jakarta TZ assertion
+│   └── next.ts         # matches / cadenceOk / nextFire (pure)
 └── listeners/
     ├── index.ts        # register() — wires listeners to the app
     ├── command.ts      # /bee-status slash command
-    └── mention.ts      # app_mention → thread-aware AI reply
+    ├── mention.ts      # app_mention → thread-aware AI reply
+    ├── remind.ts       # /bee-remind + Approve/Reject buttons
+    ├── args.ts         # flag parsing / validation (pure)
+    └── pending.ts      # confirmations awaiting a click (pure)
 ```

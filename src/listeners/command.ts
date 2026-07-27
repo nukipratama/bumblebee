@@ -1,5 +1,9 @@
 import type { App } from "@slack/bolt";
 import { getAiUsageSummary } from "../db/ai-usage.js";
+import { countReminders, listHolidayDates, listReminders } from "../db/reminders.js";
+import { localParts } from "../scheduler/clock.js";
+import { getLastTickAt } from "../scheduler/index.js";
+import { nextFire } from "../scheduler/next.js";
 
 const STATUS_LINE = "🐝 Bumblebee is online and reporting for duty. Roll out! ⚡️";
 
@@ -20,14 +24,49 @@ function formatUsage(): string {
   ].join("\n");
 }
 
+/** Format this channel's reminder state, so "is the scheduler alive?" has an answer. */
+function formatReminders(channelId: string): string {
+  const { enabled, paused } = countReminders(channelId);
+  if (enabled + paused === 0) {
+    return "*Reminders:* none in this channel yet.";
+  }
+
+  const holidays = listHolidayDates();
+  const now = new Date();
+  const upcoming = listReminders(channelId)
+    .filter((reminder) => reminder.enabled)
+    .map((reminder) => ({ reminder, next: nextFire(reminder, now, (date) => holidays.has(date)) }))
+    .filter((candidate) => candidate.next !== null)
+    .sort((a, b) => a.next!.getTime() - b.next!.getTime())[0];
+
+  const lastTickAt = getLastTickAt();
+  const lines = [
+    "*Reminders (this channel)*",
+    `• ${enabled} enabled, ${paused} paused`,
+  ];
+
+  if (upcoming) {
+    const { date, time } = localParts(upcoming.next!);
+    lines.push(`• next: \`${upcoming.reminder.code}\` at ${time} on ${date}`);
+  }
+  lines.push(`• last tick: ${lastTickAt ? localParts(lastTickAt).time : "not yet"}`);
+
+  return lines.join("\n");
+}
+
 export function registerCommand(app: App): void {
-  app.command("/bee-status", async ({ ack, respond, logger }) => {
+  app.command("/bee-status", async ({ ack, command, respond, logger }) => {
     await ack();
     let body = STATUS_LINE;
     try {
       body += `\n\n${formatUsage()}`;
     } catch (error) {
       logger.error("Failed to read AI usage summary", error);
+    }
+    try {
+      body += `\n\n${formatReminders(command.channel_id)}`;
+    } catch (error) {
+      logger.error("Failed to read reminder status", error);
     }
     await respond(body);
   });
