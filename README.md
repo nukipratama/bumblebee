@@ -6,7 +6,7 @@ Bumblebee runs as a long-running, interactive service that connects to Slack ove
 
 When mentioned, Bumblebee answers using **Azure OpenAI** — and it's thread-aware, so it holds a conversation within a thread.
 
-It also posts **scheduled reminders**: a time, some weekdays and a message, stored in SQLite and managed at runtime with `/bee-remind`. No redeploy to add or change one.
+It also posts **scheduled reminders**: a time, some weekdays and a message, stored in SQLite and managed at runtime with `/bee-remind`. No redeploy to add or change one. A reminder can rotate through a roster of people, naming a different host each time it fires.
 
 ## Stack
 
@@ -21,7 +21,7 @@ Do this once at [api.slack.com/apps](https://api.slack.com/apps):
 1. **Create app** → *From scratch* → pick the workspace.
 2. **Socket Mode** → enable → generate an **app-level token** (scope `connections:write`). This is your `SLACK_APP_TOKEN` (`xapp-…`).
 3. **OAuth & Permissions** → add bot scopes: `chat:write`, `app_mentions:read`, `commands`, and — for thread-aware AI replies — `channels:history` (public channels) plus `groups:history` (private channels). *Install to Workspace* → copy the **Bot User OAuth Token**. This is your `SLACK_BOT_TOKEN` (`xoxb-…`). Re-add scopes later → **Reinstall to Workspace**.
-4. **Slash Commands** → create `/bee-status`, and `/bee-remind` with **"Escape channels, users, and links sent to your app"** ticked (with Socket Mode no request URL is needed). Without that checkbox Slack sends the literal text `@nuki` instead of a user ID, so mentions typed into a reminder message never render.
+4. **Slash Commands** → create `/bee-status`, and `/bee-remind` with **"Escape channels, users, and links sent to your app"** ticked (with Socket Mode no request URL is needed). Without that checkbox Slack sends the literal text `@nuki` instead of a user ID: mentions typed into a reminder message never render, and `host set` can't read a roster at all.
 5. **Interactivity & Shortcuts** → **turn Interactivity on**. Socket Mode delivers button clicks over the same WebSocket, but with this toggle off the Approve/Reject buttons render and silently do nothing.
 6. **Event Subscriptions** → enable → subscribe to bot event `app_mention`.
 7. Invite the bot to a test channel: `/invite @Bumblebee`. Slash commands work in channels the bot was never invited to, but a reminder there can't post.
@@ -67,7 +67,8 @@ cp .env.example .env
 
 - **`--on`** takes `daily` (the default) or full day names — `monday,wednesday`. No ranges, no abbreviations.
 - **Cadence** is `--every-1-week` (default), `--every-2-week` or `--every-3-week`. The last two need exactly one day in `--on`, since the gap is measured in days.
-- **`--message`** posts exactly as stored. Use `\n` for a line break, and type `@someone` or `@channel` to mention them.
+- **`--message` needs quotes** whenever it contains a space — `--message "Standup time!"`. Without them only the first word is taken and the rest is rejected as a stray argument, so you get an error rather than a truncated reminder. A slash command is always one line, so use `\n` for a line break: `--message "Standup!\n• Yesterday\n• Today"`.
+- **The message posts exactly as stored**, apart from the host line a rotation appends. Type `@someone` or `@channel` to mention them.
 - **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing. It does ignore `pause`.
 - **Holidays are global** — a date added in any channel skips reminders in every channel. `holiday list` shows who added each one and where.
 
@@ -132,7 +133,8 @@ In production the database is stored in the `bumblebee-data` **Docker named volu
 2. `docker exec bumblebee date` prints `WIB` / `+0700`, not UTC — proves `tzdata` made it into the image.
 3. In the test channel, `@Bumblebee what's 2+2?` → bot replies in-thread via Azure OpenAI. Ask a follow-up in the same thread → it keeps context.
 4. `/bee-status` → status message, AI token-usage summary, and this channel's reminder counts, next fire and last scheduler tick.
-5. `/bee-remind add smoke --at <a minute from now> --message "hello"` → Approve → the channel confirms and the reminder posts on the minute. Then `/bee-remind remove smoke`.
+5. `/bee-remind add smoke --at <a minute from now> --message "hello"` → Approve → the channel confirms and the reminder posts on the minute.
+6. `/bee-remind host set smoke @you @someone-else` → Approve, then `/bee-remind run smoke` three times → a different host each time, each rendering as a real blue mention, and the third rolls the lap over. `/bee-remind show smoke` lists the roster with ✓ / → markers. Then `/bee-remind remove smoke`.
 
 ## Project layout
 
