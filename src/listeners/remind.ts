@@ -1,25 +1,39 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { KnownBlock, WebClient } from "@slack/web-api";
 import {
+  clearHosts,
   deleteHoliday,
   deleteReminder,
   getHoliday,
   getReminder,
   insertHoliday,
   insertReminder,
+  lastHostedOn,
   listHolidayDates,
   listHolidays,
+  listHosts,
   listReminders,
+  replaceHosts,
+  setLap,
   setReminderAt,
   setReminderCadence,
   setReminderDays,
   setReminderEnabled,
   setReminderMessage,
+  type Host,
   type Reminder,
 } from "../db/reminders.js";
 import { localParts } from "../scheduler/clock.js";
 import { fireReminder } from "../scheduler/index.js";
 import { nextFire } from "../scheduler/next.js";
+import {
+  drawLapAvoiding,
+  hasHosted,
+  moveToBack,
+  moveToFront,
+  pendingLap,
+  planLap,
+} from "../scheduler/rotation.js";
 import {
   CADENCE_FLAGS,
   normalizeMentions,
@@ -28,6 +42,7 @@ import {
   parseCadence,
   parseDate,
   parseDays,
+  parseUserMentions,
   unescapeNewlines,
   type Args,
   type FlagSpec,
@@ -92,6 +107,34 @@ function formatNextFire(reminder: Reminder): string {
   return next ? formatTimestamp(next.toISOString()) : "nothing in the next 4 weeks";
 }
 
+const mention = (userId: string): string => `<@${userId}>`;
+const mentionList = (userIds: readonly string[]): string => userIds.map(mention).join(", ");
+
+/**
+ * One list covering the whole roster, in lap order: who has been, who's up, who's
+ * to come. Undefined when the reminder has no rotation.
+ */
+function formatRotation(reminder: Reminder): string | undefined {
+  const roster = listHosts(reminder.id);
+  if (roster.length === 0) return undefined;
+
+  const hostedOn = lastHostedOn(reminder.id);
+  const dateOf = (member: Host): string => hostedOn.get(member.userId) ?? "earlier";
+
+  const hosted = roster
+    .filter(hasHosted)
+    .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))
+    .map((member) => `✓ ${mention(member.userId)}  hosted ${dateOf(member)}`);
+
+  const pending = roster
+    .filter((member) => !hasHosted(member))
+    .map((member, index) =>
+      index === 0 ? `→ ${mention(member.userId)}  up next` : `· ${mention(member.userId)}`,
+    );
+
+  return ["*rotation*", ...hosted, ...pending].join("\n");
+}
+
 function confirmBlocks(summary: string, pendingId: string): KnownBlock[] {
   return [
     { type: "section", text: { type: "mrkdwn", text: summary } },
@@ -126,12 +169,18 @@ function helpText(): string {
     "• `list` · `show <code>` · `edit <code> --…` · `pause <code>` · `resume <code>`",
     "• `remove <code>` · `run <code>` — `run` posts now, still respecting holidays and cadence",
     "",
+    "*Host rotation* — the bot appends `🎙 Host: @someone`, a different person each time",
+    "• `host set <code> @a @b @c` · `host clear <code>`",
+    "• `host skip <code>` — moves them to the back of this lap, they still get their turn",
+    "• `host next <code> @who` — puts someone up next",
+    "",
     "*Holidays* — shared across every channel",
     "• `holiday add <YYYY-MM-DD>` · `holiday list` · `holiday remove <YYYY-MM-DD>`",
     "",
     "*Notes*",
     "• `--on` takes `daily` or full day names: `monday,wednesday`. Defaults to `daily`.",
     "• Times are 24-hour, Asia/Jakarta.",
+    "• The rotation is shuffled, and nobody repeats until everyone has hosted. `show` has the order.",
     "• Use `\\n` in `--message` for a line break, and type `@someone` to mention them.",
   ].join("\n");
 }
@@ -313,17 +362,20 @@ async function handleShow(ctx: CommandContext, args: Args): Promise<void> {
   const reminder = await unwrap(ctx, requireReminder(ctx.channelId, code));
   if (reminder === undefined) return;
 
+  const rotation = formatRotation(reminder);
+
   await ctx.respond(
     [
       `*\`${reminder.code}\`*`,
       `*schedule*  ${formatSchedule(reminder)}`,
       `*state*  ${reminder.enabled ? "active" : "paused"}`,
-      `*created*  <@${reminder.createdBy}> on ${formatTimestamp(reminder.createdAt)}`,
+      `*created*  ${mention(reminder.createdBy)} on ${formatTimestamp(reminder.createdAt)}`,
       `*last fired*  ${formatTimestamp(reminder.lastFiredAt)}`,
       `*next fire*  ${formatNextFire(reminder)}`,
       "",
       "*message*",
       reminder.message,
+      ...(rotation ? ["", rotation] : []),
     ].join("\n"),
   );
 }
@@ -364,6 +416,148 @@ async function handleHolidayRemove(ctx: CommandContext, date: string): Promise<v
     kind: "holidayRemove",
     date,
   });
+}
+
+const HOST_USAGE =
+  "`host set <code> @a @b`, `host clear <code>`, `host skip <code>` or `host next <code> @who`";
+
+function sameRoster(roster: readonly Host[], userIds: readonly string[]): boolean {
+  return (
+    roster.length === userIds.length && roster.every((member) => userIds.includes(member.userId))
+  );
+}
+
+/** A diff, not the resulting list — a dropped name is invisible in a plain list of who remains. */
+function formatRosterDiff(roster: readonly Host[], userIds: readonly string[]): string[] {
+  const existingIds = new Set(roster.map((member) => member.userId));
+  const added = userIds.filter((id) => !existingIds.has(id));
+  const removed = roster.filter((member) => !userIds.includes(member.userId));
+  const unchanged = userIds.filter((id) => existingIds.has(id));
+
+  const note = (member: Host): string => (hasHosted(member) ? " (already hosted this lap)" : "");
+
+  return [
+    ...added.map((id) => `+ ${mention(id)}`),
+    ...removed.map((member) => `− ${mention(member.userId)}${note(member)}`),
+    ...(unchanged.length > 0 ? [`unchanged: ${mentionList(unchanged)}`] : []),
+  ];
+}
+
+async function handleHostSet(
+  ctx: CommandContext,
+  reminder: Reminder,
+  people: string[],
+): Promise<void> {
+  const userIds = await unwrap(ctx, parseUserMentions(people));
+  if (userIds === undefined) return;
+
+  const roster = listHosts(reminder.id);
+  if (sameRoster(roster, userIds)) {
+    await ctx.respond(`those are already the ${userIds.length} people on \`${reminder.code}\``);
+    return;
+  }
+
+  const upNext = pendingLap(roster)[0];
+  const keepsLead = upNext !== undefined && userIds.includes(upNext);
+
+  await ctx.ask(
+    [
+      `Set the rotation for \`${reminder.code}\`?`,
+      ...formatRosterDiff(roster, userIds),
+      keepsLead
+        ? `${mention(upNext)} stays up next. The order for the rest is drawn when you approve.`
+        : "The order is drawn when you approve.",
+    ].join("\n"),
+    { kind: "hostSet", code: reminder.code, userIds },
+  );
+}
+
+async function handleHostClear(ctx: CommandContext, reminder: Reminder): Promise<void> {
+  const roster = listHosts(reminder.id);
+  if (roster.length === 0) {
+    await ctx.respond(`\`${reminder.code}\` has no rotation — set one with \`host set\``);
+    return;
+  }
+
+  await ctx.ask(
+    `Remove the rotation from \`${reminder.code}\`? It will post with no host line, and the lap is lost.`,
+    { kind: "hostClear", code: reminder.code },
+  );
+}
+
+async function handleHostSkip(ctx: CommandContext, reminder: Reminder): Promise<void> {
+  const roster = listHosts(reminder.id);
+  if (roster.length === 0) {
+    await ctx.respond(`\`${reminder.code}\` has no rotation — set one with \`host set\``);
+    return;
+  }
+  if (roster.length === 1) {
+    await ctx.respond(`there's only one person on \`${reminder.code}\` — nothing to skip to`);
+    return;
+  }
+
+  const lap = pendingLap(roster);
+  const upNext = lap[0]!;
+  const after =
+    lap.length > 1
+      ? [
+          `${mention(lap[1]!)} would be up next.`,
+          "They keep their turn — they move to the back of this lap.",
+        ]
+      : [
+          "They were last in this lap, so it rolls over and a fresh order is drawn.",
+          "They keep their turn — everyone is pending again in the new lap.",
+        ];
+
+  await ctx.ask([`Skip ${mention(upNext)} on \`${reminder.code}\`?`, ...after].join("\n"), {
+    kind: "hostSkip",
+    code: reminder.code,
+  });
+}
+
+async function handleHostNext(
+  ctx: CommandContext,
+  reminder: Reminder,
+  people: string[],
+): Promise<void> {
+  const userIds = await unwrap(ctx, parseUserMentions(people));
+  if (userIds === undefined) return;
+  if (userIds.length > 1) {
+    await ctx.respond("`host next` takes one person");
+    return;
+  }
+
+  const userId = userIds[0]!;
+  const member = listHosts(reminder.id).find((entry) => entry.userId === userId);
+  if (!member) {
+    await ctx.respond(`${mention(userId)} is not on the rotation for \`${reminder.code}\``);
+    return;
+  }
+
+  const hostedOn = lastHostedOn(reminder.id).get(userId) ?? "earlier";
+  const lines = [`Put ${mention(userId)} up next on \`${reminder.code}\`?`];
+  if (hasHosted(member)) {
+    lines.push(`They already hosted this lap on ${hostedOn}, so they'll host again.`);
+  }
+
+  await ctx.ask(lines.join("\n"), { kind: "hostNext", code: reminder.code, userId });
+}
+
+async function handleHost(ctx: CommandContext, rest: string): Promise<void> {
+  const [action = "", code = "", ...people] = rest.trim().split(/\s+/).filter(Boolean);
+
+  if (!["set", "clear", "skip", "next"].includes(action) || code === "") {
+    await ctx.respond(HOST_USAGE);
+    return;
+  }
+
+  const reminder = await unwrap(ctx, requireReminder(ctx.channelId, code));
+  if (reminder === undefined) return;
+
+  if (action === "set") return handleHostSet(ctx, reminder, people);
+  if (action === "clear") return handleHostClear(ctx, reminder);
+  if (action === "skip") return handleHostSkip(ctx, reminder);
+  return handleHostNext(ctx, reminder, people);
 }
 
 async function handleHoliday(ctx: CommandContext, rest: string): Promise<void> {
@@ -460,7 +654,10 @@ async function applyRun(
   if (!existing) return { ephemeral: `\`${code}\` no longer exists — nothing posted` };
 
   const outcome = await fireReminder(existing, { client });
-  if (outcome.posted) return { ephemeral: `Posted \`${code}\`.` };
+  if (outcome.posted) {
+    const host = outcome.host ? ` Host was ${mention(outcome.host)}, and their turn is used.` : "";
+    return { ephemeral: `Posted \`${code}\`.${host}` };
+  }
 
   const whenNext = existing.enabled ? `\nNext fire: ${formatNextFire(existing)}` : "";
   return { ephemeral: `Skipped \`${code}\`: ${outcome.reason}.${whenNext}` };
@@ -486,11 +683,101 @@ function applyHolidayRemove(entry: PendingEntry, date: string): ApplyResult {
   };
 }
 
+const goneSince = (code: string): ApplyResult => ({
+  ephemeral: `\`${code}\` no longer exists — nothing changed`,
+});
+
+function applyHostSet(
+  entry: PendingEntry,
+  reminder: Reminder | undefined,
+  code: string,
+  userIds: string[],
+): ApplyResult {
+  if (!reminder) return goneSince(code);
+
+  replaceHosts(reminder.id, userIds, planLap(listHosts(reminder.id), userIds));
+  const upNext = pendingLap(listHosts(reminder.id))[0];
+
+  return {
+    ephemeral: `Rotation for \`${code}\` set — ${userIds.length} people.`,
+    channel:
+      `${mention(entry.userId)} set the rotation for \`${code}\` — ${mentionList(userIds)}` +
+      (upNext ? `. ${mention(upNext)} is up next` : ""),
+  };
+}
+
+function applyHostClear(
+  entry: PendingEntry,
+  reminder: Reminder | undefined,
+  code: string,
+): ApplyResult {
+  if (!reminder) return goneSince(code);
+
+  clearHosts(reminder.id);
+  return {
+    ephemeral: `Rotation removed from \`${code}\`.`,
+    channel: `${mention(entry.userId)} removed the rotation from \`${code}\``,
+  };
+}
+
+function applyHostSkip(
+  entry: PendingEntry,
+  reminder: Reminder | undefined,
+  code: string,
+): ApplyResult {
+  if (!reminder) return goneSince(code);
+
+  const roster = listHosts(reminder.id);
+  const rosterIds = roster.map((member) => member.userId);
+  if (rosterIds.length < 2) {
+    return { ephemeral: `\`${code}\` no longer has enough people to skip — nothing changed` };
+  }
+
+  const lap = pendingLap(roster);
+  const skipped = lap[0]!;
+  // A one-person lap can't be reordered, so it rolls over to a fresh order instead.
+  const next = lap.length > 1 ? moveToBack(lap, skipped) : drawLapAvoiding(rosterIds, skipped);
+  setLap(reminder.id, next);
+
+  return {
+    ephemeral: `Skipped ${mention(skipped)} on \`${code}\`.`,
+    channel: `${mention(entry.userId)} skipped ${mention(skipped)} on \`${code}\` — ${mention(next[0]!)} is up next`,
+  };
+}
+
+function applyHostNext(
+  entry: PendingEntry,
+  reminder: Reminder | undefined,
+  code: string,
+  userId: string,
+): ApplyResult {
+  if (!reminder) return goneSince(code);
+
+  const roster = listHosts(reminder.id);
+  if (!roster.some((member) => member.userId === userId)) {
+    return { ephemeral: `${mention(userId)} is no longer on \`${code}\` — nothing changed` };
+  }
+
+  setLap(reminder.id, moveToFront(pendingLap(roster), userId));
+  return {
+    ephemeral: `${mention(userId)} is up next on \`${code}\`.`,
+    channel: `${mention(entry.userId)} put ${mention(userId)} up next on \`${code}\``,
+  };
+}
+
 /** Re-reads current state, because it can change between the prompt and the click. */
 async function applyAction(entry: PendingEntry, client: WebClient): Promise<ApplyResult> {
   const { action, channelId } = entry;
 
   switch (action.kind) {
+    case "hostSet":
+      return applyHostSet(entry, getReminder(channelId, action.code), action.code, action.userIds);
+    case "hostClear":
+      return applyHostClear(entry, getReminder(channelId, action.code), action.code);
+    case "hostSkip":
+      return applyHostSkip(entry, getReminder(channelId, action.code), action.code);
+    case "hostNext":
+      return applyHostNext(entry, getReminder(channelId, action.code), action.code, action.userId);
     case "add":
       return applyAdd(entry, getReminder(channelId, action.reminder.code));
     case "edit":
@@ -520,6 +807,10 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   }
   if (subcommand === "holiday") {
     await handleHoliday(ctx, rest);
+    return;
+  }
+  if (subcommand === "host") {
+    await handleHost(ctx, rest);
     return;
   }
   if (subcommand === "list") {

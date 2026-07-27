@@ -26,6 +26,7 @@ const DAY_ORDER = [
 const EVERY_DAY = "*";
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const LABELLED_MENTION = /<@([UWB][A-Z0-9]+)\|[^>]*>/g;
+const USER_MENTION = /^<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>$/;
 
 export const CADENCE_FLAGS: ReadonlyMap<string, number> = new Map([
   ["every-1-week", 1],
@@ -155,4 +156,29 @@ export function unescapeNewlines(value: string): string {
 /** Slack sends `<@U123|nuki>` when escaping is on; the label stops it rendering as a mention. */
 export function normalizeMentions(text: string): string {
   return text.replace(LABELLED_MENTION, "<@$1>");
+}
+
+/**
+ * User ids from `@name` tokens, in the order given. A token arriving as plain
+ * text means the slash command's escaping is off, so the error says so — that
+ * setting is otherwise a silent dead end.
+ */
+export function parseUserMentions(tokens: readonly string[]): Parsed<string[]> {
+  if (tokens.length === 0) return fail("list at least one person, like `@alice @bob`");
+
+  const userIds: string[] = [];
+  for (const token of tokens) {
+    const match = USER_MENTION.exec(token);
+    if (!match) {
+      return fail(
+        `\`${token}\` is not a person — type \`@name\` and pick them from the autocomplete. ` +
+          'If `@name` still lands here as plain text, tick "Escape channels, users, and links" ' +
+          "on the `/bee-remind` slash command.",
+      );
+    }
+    if (userIds.includes(match[1]!)) return fail(`<@${match[1]}> is listed twice`);
+    userIds.push(match[1]!);
+  }
+
+  return ok(userIds);
 }

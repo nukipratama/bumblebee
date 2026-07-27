@@ -3,11 +3,13 @@ import type { WebClient } from "@slack/web-api";
 import {
   getHoliday,
   listEnabledReminders,
-  markFired,
+  listHosts,
+  recordFire,
   type Reminder,
 } from "../db/reminders.js";
 import { assertJakarta, daysBetween, localParts } from "./clock.js";
 import { cadenceOk, matches, requiredDaysSinceLastFire } from "./next.js";
+import { drawLap, pendingLap } from "./rotation.js";
 
 const MS_PER_MINUTE = 60_000;
 const JUST_AFTER_THE_MINUTE_MS = 61_000;
@@ -16,7 +18,9 @@ export interface FireContext {
   client: WebClient;
 }
 
-export type FireOutcome = { posted: true } | { posted: false; reason: string };
+export type FireOutcome =
+  | { posted: true; host: string | undefined }
+  | { posted: false; reason: string };
 
 let lastTickAt: Date | undefined;
 
@@ -43,13 +47,27 @@ export async function fireReminder(reminder: Reminder, ctx: FireContext): Promis
 
   if (!cadenceOk(reminder, date)) return { posted: false, reason: cadenceReason(reminder, date) };
 
-  await ctx.client.chat.postMessage({
+  const roster = listHosts(reminder.id);
+  const lap = pendingLap(roster);
+  const host = lap[0];
+
+  const posted = await ctx.client.chat.postMessage({
     channel: reminder.channelId,
-    markdown_text: reminder.message,
+    markdown_text: host ? `${reminder.message}\n🎙 Host: <@${host}>` : reminder.message,
   });
 
-  markFired(reminder.id, now);
-  return { posted: true };
+  // Only now, so a failed post never costs anyone their turn.
+  const remaining = lap.slice(1);
+  recordFire({
+    reminderId: reminder.id,
+    firedOn: date,
+    firedAt: now,
+    hostUserId: host ?? null,
+    messageTs: posted.ts ?? null,
+    nextLap: remaining.length > 0 ? remaining : drawLap(roster.map((member) => member.userId)),
+  });
+
+  return { posted: true, host };
 }
 
 async function runTick(app: App): Promise<void> {
@@ -63,7 +81,8 @@ async function runTick(app: App): Promise<void> {
     try {
       const outcome = await fireReminder(reminder, app);
       if (outcome.posted) {
-        app.logger.info(`fired \`${reminder.code}\` -> ${reminder.channelId}`);
+        const host = outcome.host ? ` (host ${outcome.host})` : "";
+        app.logger.info(`fired \`${reminder.code}\` -> ${reminder.channelId}${host}`);
       } else {
         app.logger.info(`skipped \`${reminder.code}\`: ${outcome.reason}`);
       }

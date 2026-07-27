@@ -46,6 +46,22 @@ const migrations: string[] = [
      added_in_channel TEXT NOT NULL,
      added_at         TEXT NOT NULL
    )`,
+  // A host is pending this lap while lap_order is a number, and has already
+  // hosted once it is NULL. Up next is the lowest number; the lap is over when
+  // no row has one.
+  `CREATE TABLE reminder_hosts (
+     reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+     user_id     TEXT    NOT NULL,
+     lap_order   INTEGER,
+     PRIMARY KEY (reminder_id, user_id)
+   )`,
+  `CREATE TABLE reminder_fires (
+     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+     reminder_id  INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+     fired_on     TEXT    NOT NULL,
+     host_user_id TEXT,
+     message_ts   TEXT
+   )`,
 ];
 
 /** Apply any pending schema migrations. Idempotent; safe to call on every boot. */

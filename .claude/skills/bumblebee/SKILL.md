@@ -8,7 +8,7 @@ description: Project conventions and codebase map for the bumblebee repo — the
 Bumblebee is the LIMO team's general-purpose Slack bot, successor to Optimus. It runs as a
 long-running container that connects to Slack over **Socket Mode** (outbound WebSocket, no public
 endpoint) and replies via **Azure OpenAI**. It also posts **scheduled reminders** from SQLite, managed
-at runtime via `/bee-remind`. Host rotations (ported from Optimus) are not built yet.
+at runtime via `/bee-remind`, each optionally rotating through a roster of hosts.
 
 ## Codebase map
 
@@ -20,11 +20,12 @@ src/
 ├── db/
 │   ├── index.ts        # node:sqlite connection + append-only migrations array
 │   ├── ai-usage.ts     # record / summarize AI token usage
-│   └── reminders.ts    # reminders + holidays
+│   └── reminders.ts    # reminders, holidays, host rosters + fire history
 ├── scheduler/
 │   ├── index.ts        # startScheduler(app) — minute tick + fireReminder()
 │   ├── clock.ts        # local wall clock, daysBetween, assertJakarta
-│   └── next.ts         # matches / cadenceOk / nextFire — pure, no db import
+│   ├── next.ts         # matches / cadenceOk / nextFire — pure, no db import
+│   └── rotation.ts     # shuffle / drawLap / planLap / move* — pure, no db import
 └── listeners/
     ├── index.ts        # register(app) — wires every listener
     ├── command.ts      # /bee-status slash command (status + AI usage + reminder state)
@@ -35,7 +36,7 @@ src/
 ```
 
 - **Schema changes** → *append* a `CREATE TABLE`/`ALTER TABLE` string to the `migrations` array in
-  `db/index.ts`. Index = version; never edit an existing entry. Currently at `user_version = 3`.
+  `db/index.ts`. Index = version; never edit an existing entry. Currently at `user_version = 5`.
 - **DB access** → prepare statements **lazily** (`db/reminders.ts` memoizes by SQL string). Never
   `db.prepare` at module top level: the tables don't exist until `initDb()` runs.
 - **Pure modules must not import `db/index.ts`** — it opens the DB and `mkdir`s `./data/` at import
@@ -43,6 +44,12 @@ src/
   `scheduler/index.ts`.
 - **Every `/bee-remind` command that writes data goes through Approve/Reject**, and re-validates
   against current state when the button is clicked — state can change between prompt and click.
+- **Host rotation state is one column**: `reminder_hosts.lap_order` is a number while that person is
+  pending this lap and `NULL` once they've hosted it. Up next is the lowest number; the lap is over
+  when no row has one. There is no pointer column and no "current host" to drift.
+- **Only a successful post advances a lap**, via `recordFire`, which stamps `last_fired_at`, writes the
+  history row and rewrites the lap in one transaction. Never advance before the post — a Slack failure
+  would silently cost someone their turn.
 
 - **New Slack behavior** → add a `listeners/<name>.ts` exporting `register<Name>(app)`, then wire it
   in `listeners/index.ts`. Keep bootstrap in `index.ts` thin.
