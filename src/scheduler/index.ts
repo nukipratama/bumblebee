@@ -9,7 +9,7 @@ import {
 } from "../db/reminders.js";
 import { assertJakarta, daysBetween, localParts } from "./clock.js";
 import { cadenceOk, matches, requiredDaysSinceLastFire } from "./next.js";
-import { drawLap } from "./rotation.js";
+import { drawLap, pendingLap } from "./rotation.js";
 
 const MS_PER_MINUTE = 60_000;
 const JUST_AFTER_THE_MINUTE_MS = 61_000;
@@ -48,7 +48,7 @@ export async function fireReminder(reminder: Reminder, ctx: FireContext): Promis
   if (!cadenceOk(reminder, date)) return { posted: false, reason: cadenceReason(reminder, date) };
 
   const roster = listHosts(reminder.id);
-  const lap = roster.filter((member) => member.lapOrder !== null).map((member) => member.userId);
+  const lap = pendingLap(roster);
   const host = lap[0];
 
   const posted = await ctx.client.chat.postMessage({

@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import {
   drawLap,
   drawLapAvoiding,
+  hasHosted,
   moveToBack,
   moveToFront,
+  pendingLap,
   planLap,
   shuffle,
   type LapMember,
@@ -72,6 +74,40 @@ describe("drawLapAvoiding", () => {
 
   it("cannot avoid the only member of a one-person roster", () => {
     assert.deepEqual(drawLapAvoiding(["alice"], "alice", identity), ["alice"]);
+  });
+});
+
+describe("hasHosted", () => {
+  it("is true only for a null lapOrder", () => {
+    assert.equal(hasHosted({ userId: "alice", lapOrder: null }), true);
+    assert.equal(hasHosted({ userId: "alice", lapOrder: 1 }), false);
+  });
+
+  it("treats lapOrder 0 as pending — it is the up-next slot, and it is falsy", () => {
+    assert.equal(hasHosted({ userId: "alice", lapOrder: 0 }), false);
+  });
+});
+
+describe("pendingLap", () => {
+  it("keeps only pending members, in the order given", () => {
+    const roster: LapMember[] = [
+      { userId: "alice", lapOrder: null },
+      { userId: "bob", lapOrder: 0 },
+      { userId: "cara", lapOrder: 1 },
+    ];
+    assert.deepEqual(pendingLap(roster), ["bob", "cara"]);
+  });
+
+  it("is empty once everyone has hosted, and for no roster at all", () => {
+    assert.deepEqual(pendingLap(ROSTER.map((userId) => ({ userId, lapOrder: null }))), []);
+    assert.deepEqual(pendingLap([]), []);
+  });
+
+  it("returns the whole roster on a fresh lap", () => {
+    assert.deepEqual(
+      pendingLap(ROSTER.map((userId, lapOrder) => ({ userId, lapOrder }))),
+      ROSTER,
+    );
   });
 });
 

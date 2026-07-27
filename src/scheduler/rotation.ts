@@ -54,6 +54,15 @@ export interface LapMember {
   lapOrder: number | null;
 }
 
+export function hasHosted(member: LapMember): boolean {
+  return member.lapOrder === null;
+}
+
+/** The pending lap, in order — assumes `roster` is sorted hosted-first-then-pending, as `listHosts` returns it. */
+export function pendingLap(roster: readonly LapMember[]): string[] {
+  return roster.filter((member) => !hasHosted(member)).map((member) => member.userId);
+}
+
 /**
  * The lap to store after `host set` replaces the roster with `userIds`.
  *

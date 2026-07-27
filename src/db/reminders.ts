@@ -32,7 +32,12 @@ export interface Holiday {
   addedAt: string;
 }
 
-/** A roster member. `lapOrder` is their place in the current lap, or null once they've hosted it. */
+/**
+ * A roster member. `lapOrder` is their place in the current lap, or null once
+ * they've hosted it. Structurally a `LapMember`, deliberately declared here
+ * rather than imported: `rotation.ts` states the minimal shape its pure
+ * functions need, and shouldn't grow a field because this row gained a column.
+ */
 export interface Host {
   userId: string;
   lapOrder: number | null;

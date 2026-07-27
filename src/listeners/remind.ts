@@ -26,7 +26,14 @@ import {
 import { localParts } from "../scheduler/clock.js";
 import { fireReminder } from "../scheduler/index.js";
 import { nextFire } from "../scheduler/next.js";
-import { drawLapAvoiding, moveToBack, moveToFront, planLap } from "../scheduler/rotation.js";
+import {
+  drawLapAvoiding,
+  hasHosted,
+  moveToBack,
+  moveToFront,
+  pendingLap,
+  planLap,
+} from "../scheduler/rotation.js";
 import {
   CADENCE_FLAGS,
   normalizeMentions,
@@ -102,12 +109,6 @@ function formatNextFire(reminder: Reminder): string {
 
 const mention = (userId: string): string => `<@${userId}>`;
 const mentionList = (userIds: readonly string[]): string => userIds.map(mention).join(", ");
-
-const hasHosted = (member: Host): boolean => member.lapOrder === null;
-
-/** The pending lap, in order — `listHosts` already sorts hosted-first-then-pending. */
-const pendingLap = (roster: readonly Host[]): string[] =>
-  roster.filter((member) => !hasHosted(member)).map((member) => member.userId);
 
 /**
  * One list covering the whole roster, in lap order: who has been, who's up, who's
