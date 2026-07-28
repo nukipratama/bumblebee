@@ -50,13 +50,20 @@ function handOver(fire: Fire, reminder: Reminder, clicker: string): SkipOutcome 
 
   setFireHost(fire.id, replacement);
   setLap(reminder.id, [...remaining, clicker]);
+  // They clicked Skip today, so they are out today as well as not hosting it.
+  addSkip(fire.id, clicker);
 
   return {
     thread: `🔁 <@${replacement}> is hosting today instead — <@${clicker}> keeps their turn.`,
   };
 }
 
-function applySkip(fire: Fire, reminder: Reminder, clicker: string, now: number): SkipOutcome {
+export function applySkip(
+  fire: Fire,
+  reminder: Reminder,
+  clicker: string,
+  now: number,
+): SkipOutcome {
   const isHost = fire.hostUserId === clicker;
 
   if (isHost && !handoverOpen(fire, now)) {

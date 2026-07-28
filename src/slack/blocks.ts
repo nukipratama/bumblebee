@@ -30,12 +30,12 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const context: string[] = [];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   if (post.outToday.length > 0) {
-    context.push(`🗓 Out today: ${post.outToday.map(mention).join(", ")}`);
+    context.push(`🚪 Out today: ${post.outToday.map(mention).join(", ")}`);
   }
   if (context.length > 0) {
     blocks.push({
       type: "context",
-      elements: [{ type: "mrkdwn", text: context.join("  ·  ") }],
+      elements: [{ type: "mrkdwn", text: context.join("\n") }],
     });
   }
 
