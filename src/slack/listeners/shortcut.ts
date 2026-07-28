@@ -263,6 +263,7 @@ export function registerShortcut(app: App): void {
       await client.chat.postMessage({
         channel: source.channelId,
         thread_ts: source.messageTs,
+        reply_broadcast: true,
         text: `<@${userId}> added reminder \`${created.code}\` — ${formatSchedule(created)}${rotation}`,
       });
     } catch (error) {
