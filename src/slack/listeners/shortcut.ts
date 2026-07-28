@@ -11,7 +11,7 @@ import {
   listReminders,
   replaceHosts,
 } from "../../store/reminders.js";
-import { daysFromSelection } from "../args.js";
+import { daysFromSelection, parseAt } from "../args.js";
 import { formatSchedule } from "../text.js";
 
 export const REMIND_FROM_MESSAGE = "remind_from_message";
@@ -56,8 +56,15 @@ function modalBlocks(suggestedCode: string): KnownBlock[] {
       type: "input",
       block_id: "at",
       label: { type: "plain_text", text: "Time" },
-      hint: { type: "plain_text", text: "Asia/Jakarta" },
-      element: { type: "timepicker", action_id: "value", initial_time: DEFAULT_TIME },
+      // Slack's timepicker offers no way to set the dropdown's increments, and
+      // its free-text entry is not discoverable, so the time is typed outright.
+      hint: { type: "plain_text", text: "24-hour, Asia/Jakarta — e.g. 09:15" },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        initial_value: DEFAULT_TIME,
+        placeholder: { type: "plain_text", text: "09:15" },
+      },
     },
     {
       type: "input",
@@ -118,12 +125,12 @@ interface Submission {
 /** Every input block uses the action id `value`, so each field is one lookup. */
 type Values = Record<string, Record<string, ViewStateValue>>;
 
-function readSubmission(values: Values): Submission {
+export function readSubmission(values: Values): Submission {
   const field = (block: string): ViewStateValue | undefined => values[block]?.value;
 
   return {
     code: (field("code")?.value ?? "").trim(),
-    at: field("at")?.selected_time ?? "",
+    at: (field("at")?.value ?? "").trim(),
     dayNames: (field("days")?.selected_options ?? []).map((option) => option.value),
     everyNWeeks: Number(field("cadence")?.selected_option?.value ?? 1),
     hosts: field("hosts")?.selected_users ?? [],
@@ -134,10 +141,10 @@ function readSubmission(values: Values): Submission {
  * Keyed by block so Slack marks the offending field rather than replacing the
  * dialog. All local — a `view_submission` must be acked within three seconds.
  */
-function validate(
+export function validate(
   submission: Submission,
   channelId: string,
-): { errors: Record<string, string> } | { days: string } {
+): { errors: Record<string, string> } | { at: string; days: string } {
   const errors: Record<string, string> = {};
 
   if (!isReminderCode(submission.code)) {
@@ -145,6 +152,9 @@ function validate(
   } else if (getReminder(channelId, submission.code)) {
     errors.code = `\`${submission.code}\` already exists in this channel.`;
   }
+
+  const at = parseAt(submission.at);
+  if (!at.ok) errors.at = at.error;
 
   const days = daysFromSelection(submission.dayNames);
   if (!days.ok) {
@@ -155,7 +165,8 @@ function validate(
   const fits = cadenceFitsDays(submission.everyNWeeks, days.value);
   if (!fits.ok) errors.days = fits.error;
 
-  return Object.keys(errors).length > 0 ? { errors } : { days: days.value };
+  if (!at.ok || Object.keys(errors).length > 0) return { errors };
+  return { at: at.value, days: days.value };
 }
 
 /** Re-read so an edit made since the shortcut was clicked is picked up. */
@@ -235,7 +246,7 @@ export function registerShortcut(app: App): void {
       insertReminder({
         channelId: source.channelId,
         code: submission.code,
-        at: submission.at,
+        at: checked.at,
         days: checked.days,
         message,
         bodyFormat: "mrkdwn",
