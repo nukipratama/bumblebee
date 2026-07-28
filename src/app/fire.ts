@@ -35,15 +35,17 @@ export async function fireReminder(reminder: Reminder, client: WebClient): Promi
     body: reminder.message,
     bodyFormat: reminder.bodyFormat,
     host,
-    outToday: [],
+    skips: [],
     skippable: roster.length > 0,
-    windowClosed: false,
   };
 
   const posted = await client.chat.postMessage({
     channel: reminder.channelId,
     blocks: reminderBlocks(post),
     text: fallbackText(post),
+    // A body is often just a meeting link, and the card outlives every update.
+    unfurl_links: false,
+    unfurl_media: false,
   });
 
   // Only now, so a failed post never costs anyone their turn.

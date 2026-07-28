@@ -52,6 +52,13 @@ export interface Fire {
   messageTs: string | null;
 }
 
+/** `noticeTs` is the thread reply carrying `reason`, so an edit rewrites it in place. */
+export interface Skip {
+  userId: string;
+  reason: string | null;
+  noticeTs: string | null;
+}
+
 export interface NewFire {
   reminderId: number;
   firedOn: string;

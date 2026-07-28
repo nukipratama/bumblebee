@@ -37,6 +37,8 @@ export interface PostedMessage {
   channel: string;
   blocks?: unknown[];
   text?: string;
+  unfurl_links?: boolean;
+  unfurl_media?: boolean;
 }
 
 export interface FakeClient {

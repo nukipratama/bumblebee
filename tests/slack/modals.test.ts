@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Reminder } from "../../src/domain/types.js";
+import type { InputBlock, ModalView } from "@slack/web-api";
+import type { Reminder, Skip } from "../../src/domain/types.js";
 import {
+  SKIP_FORM,
   type FormFields,
   daysFromSelection,
   parseAt,
   plannedEdit,
+  readSkipReason,
   readSubmission,
   reminderModal,
+  skipModal,
   validate,
 } from "../../src/slack/modals.js";
 
@@ -348,5 +352,62 @@ describe("plannedEdit", () => {
   it("ignores a message block that was never rendered", () => {
     const noMessage = { ...unchanged, message: undefined };
     assert.equal(plannedEdit(stored, roster, noMessage, "09:00", "monday").message, undefined);
+  });
+});
+
+describe("skipModal", () => {
+  const source = { channelId: "C1", messageTs: "1700000000.0001" };
+
+  const modal = (existing?: Skip) => skipModal(source, existing) as ModalView;
+  const reasonInput = (existing?: Skip) => modal(existing).blocks[0] as InputBlock;
+
+  it("points back at the post it was opened from, which a submission does not carry", () => {
+    const view = modal();
+
+    assert.equal(view.callback_id, SKIP_FORM);
+    assert.deepEqual(JSON.parse(view.private_metadata!), source);
+  });
+
+  it("lets the box be submitted empty, since a reason is optional", () => {
+    assert.equal(reasonInput().optional, true);
+  });
+
+  it("caps the reason in the browser, so nothing has to re-check it on submit", () => {
+    const { element } = reasonInput();
+    assert.ok(element.type === "plain_text_input" && element.max_length === 200);
+  });
+
+  it("omits initial_value entirely when there is no reason, which Slack requires", () => {
+    const { element } = reasonInput();
+    assert.ok(element.type === "plain_text_input");
+    assert.ok(!("initial_value" in element));
+  });
+
+  it("prefills an existing reason so it can be corrected", () => {
+    const { element } = reasonInput({ userId: "U_B", reason: "sick", noticeTs: null });
+    assert.ok(element.type === "plain_text_input" && element.initial_value === "sick");
+  });
+
+  it("is where someone learns they already skipped, since the button cannot say so", () => {
+    const fresh = modal();
+    assert.deepEqual(fresh.title, { type: "plain_text", text: "Skip me" });
+    assert.deepEqual(fresh.submit, { type: "plain_text", text: "Skip" });
+
+    const again = modal({ userId: "U_B", reason: null, noticeTs: null });
+    assert.deepEqual(again.title, { type: "plain_text", text: "You're skipping" });
+    assert.deepEqual(again.submit, { type: "plain_text", text: "Save" });
+  });
+});
+
+describe("readSkipReason", () => {
+  it("reads and trims what was typed", () => {
+    assert.equal(readSkipReason(values({ reason: { value: "  sick " } })), "sick");
+  });
+
+  it("reads a blank box as no reason at all", () => {
+    for (const state of [{ value: "" }, { value: "   " }, { value: null }]) {
+      assert.equal(readSkipReason(values({ reason: state })), undefined);
+    }
+    assert.equal(readSkipReason(values({})), undefined);
   });
 });

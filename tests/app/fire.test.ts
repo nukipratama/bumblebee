@@ -165,7 +165,7 @@ describe("fireReminder — the post itself", () => {
   const blockTypes = (blocks: unknown[] | undefined): string[] =>
     (blocks ?? []).map((block) => (block as { type: string }).type);
 
-  it("carries a Skip today button only when someone could take over", async () => {
+  it("carries a Skip me button only when someone could take over", async () => {
     const rotating = withRoster(["U_A", "U_B"]);
     const { client, posted } = fakeClient();
     await fireReminder(rotating, client);
@@ -178,6 +178,15 @@ describe("fireReminder — the post itself", () => {
     await fireReminder(plain, solo.client);
 
     assert.ok(!blockTypes(solo.posted[0]!.blocks).includes("actions"));
+  });
+
+  it("suppresses the link card, which outlives every later update of the post", async () => {
+    const reminder = seed({ message: "Standup — https://meet.google.com/abc-defg-hij" });
+    const { client, posted } = fakeClient();
+    await fireReminder(reminder, client);
+
+    assert.equal(posted[0]!.unfurl_links, false);
+    assert.equal(posted[0]!.unfurl_media, false);
   });
 
   it("renders each body dialect through its own block, never converting", async () => {

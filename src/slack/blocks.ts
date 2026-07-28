@@ -17,9 +17,8 @@ export interface ReminderPost {
   bodyFormat: BodyFormat;
   host?: string;
   hostUnavailable?: boolean;
-  outToday: readonly string[];
+  skips: readonly string[];
   skippable: boolean;
-  windowClosed: boolean;
 }
 
 const mention = (userId: string): string => `<@${userId}>`;
@@ -37,13 +36,12 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
 
   const context: string[] = [];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
-  else if (post.hostUnavailable) context.push("⚠️ Nobody available to host today");
-  if (post.outToday.length > 0) {
-    context.push(`🚪 Out today: ${post.outToday.map(mention).join(", ")}`);
+  else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
+  if (post.skips.length > 0) {
+    context.push(`🔕 Skip: ${post.skips.map(mention).join(", ")}`);
   }
-  // Always last: without it a post gives no way back to the reminder that made
-  // it, and the code is what `show` and every button are keyed by.
-  context.push(`\`${post.code}\``);
+  // Always last: without it a post gives no way back to the reminder that made it.
+  context.push(`⚙️ \`${post.code}\``);
 
   blocks.push({
     type: "context",
@@ -57,11 +55,7 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
         {
           type: "button",
           action_id: SKIP_ACTION,
-          text: {
-            type: "plain_text",
-            text: post.windowClosed ? "Skip closed" : "Skip today",
-          },
-          value: post.windowClosed ? "closed" : "open",
+          text: { type: "plain_text", text: "Skip me" },
         },
       ],
     });

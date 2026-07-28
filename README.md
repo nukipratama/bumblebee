@@ -24,7 +24,7 @@ anyone can manage from Slack itself, with no redeploy.
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
 | **Reminder commands** | `/bee-remind list` · `show` · `holiday` | Three read-only commands; creating, editing, running and removing are buttons and dialogs. |
 | **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
-| **Skip today** | The button on a rotating reminder | The host hands over to the next person, or anyone marks themselves out for the day. |
+| **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason. The host hands over to the next person; anyone else is just listed as skipping. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
 
@@ -80,7 +80,7 @@ At [api.slack.com/apps](https://api.slack.com/apps):
 > [!IMPORTANT]
 > Two settings **fail silently** when missed — nothing errors, the feature just does nothing:
 >
-> - **Interactivity off** → every button and dialog (Approve/Reject, `Skip today`, `Edit`,
+> - **Interactivity off** → every button and dialog (Approve/Reject, `Skip me`, `Edit`,
 >   `+ New reminder`) renders and does nothing.
 > - **Callback ID ≠ `remind_from_message`** → the shortcut appears in the ⋮ menu and does nothing.
 >
@@ -192,25 +192,36 @@ it empty means no rotation, and emptying it later clears one.
 - `show <code>` prints the whole roster: ✓ for those who have hosted this lap (with the date), → for
   whoever is up, and the rest below.
 
-### The `Skip today` button
+### The `Skip me` button
 
-Every rotating reminder posts with a **`Skip today`** button. It acts immediately — no confirmation,
-since it's one click saying one thing.
+Every rotating reminder posts with a **`Skip me`** button. It opens a dialog with one field — a
+reason — which is **optional**: submit it empty and you're simply listed as skipping.
 
+```
+🎙 Host: @alice
+🔕 Skip: @bob, @dana
+⚙️ `standup`
+```
+
+- **The reason lives in the thread**, not on the post, as one reply per person:
+  `🔕 @bob is skipping — sick, back tomorrow`. Leave the box empty and nothing is posted at all.
+- **Clicking again reopens the dialog prefilled.** Editing rewrites that same thread reply rather
+  than adding a second one; clearing the box deletes it and leaves you listed.
 - **If you're the host**, and it's **within 30 minutes** of the reminder firing, the next person in
-  the lap takes over today. The post rewrites itself to name them, adds you to `🚪 Out today`, and a
-  thread reply says so. **You keep your turn** — you go back into the lap, you just aren't up today.
-  After 30 minutes the button reports itself closed: the meeting has effectively happened, and
-  rewriting who was responsible would revise history.
-- **Anyone already marked out is passed over**, so a handover never names a host who has said they
-  won't be there. They keep their place in the lap — being out today costs nobody a turn. If everyone
-  left in the lap is out, the post says `⚠️ Nobody available to host today` rather than naming
-  someone who isn't coming.
-- **If you're not the host**, you're added to `🚪 Out today`. No time limit, and it doesn't touch the
-  rotation. Anyone in the channel can do this — you don't have to be on the roster to say you'll be
-  away.
+  the lap takes over. The post rewrites itself to name them, adds you to `🔕 Skip:`, and a thread
+  reply says so. **You keep your turn** — you go back into the lap, you just aren't up today. After
+  30 minutes only the *handover* is refused: the meeting has effectively happened, and rewriting who
+  was responsible would revise history. Everyone else can still skip, with no time limit.
+- **Anyone already skipping is passed over**, so a handover never names a host who has said they
+  won't be there. They keep their place in the lap — skipping costs nobody a turn. If everyone left
+  in the lap has skipped, the post says `⚠️ Nobody available to host` rather than naming someone who
+  isn't coming.
+- **If you're not the host**, you're added to `🔕 Skip:` and the rotation is untouched. Anyone in the
+  channel can do this — you don't have to be on the roster to say you'll be away.
 
-Reminders without a roster don't carry the button — there'd be nobody to hand over to.
+Reminders without a roster don't carry the button — there'd be nobody to hand over to. The button
+never hides or relabels itself: a fired reminder is one shared message, so anything it said would be
+said to everyone. The dialog is where you learn you're already down as skipping.
 
 ## Architecture
 
@@ -253,7 +264,7 @@ src/
         ├── status.ts           /bee-status
         ├── mention.ts          app_mention → thread-aware AI reply
         ├── shortcut.ts         "Make this a reminder" → opens the form
-        ├── skip.ts             the Skip today button
+        ├── skip.ts             the Skip me button and its reason dialog
         └── remind/             /bee-remind, split by subcommand family
             ├── index.ts        register + subcommand dispatch + Approve/Reject
             ├── modal.ts        the form's view handler + New/Edit buttons
@@ -388,7 +399,8 @@ says what a failure would mean.
 | 11 | `show smoke` → the **user picker** → **Approve** | That person is up next | The code isn't round-tripping through `block_id` |
 | 12 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
 | 13 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke |
-| 14 | Any fired post | Ends with the reminder's code in grey | — |
+| 14 | Any fired post | Ends with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
+| 14b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:`, reason in the thread; second click opens **prefilled** and edits that same reply | A second thread reply → the notice ts isn't being stored |
 | 15 | `/bee-remind add foo` | Says where `add` went | — |
 | 16 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 
