@@ -1,26 +1,22 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
-import { APPROVE_ACTION, REJECT_ACTION, confirmBlocks } from "../../blocks.js";
-import { CADENCE_FLAGS, parseArgs, type FlagSpec } from "../../args.js";
+import {
+  APPROVE_ACTION,
+  REJECT_ACTION,
+  REMOVE_REMINDER_ACTION,
+  RUN_REMINDER_ACTION,
+  confirmBlocks,
+} from "../../blocks.js";
 import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
 import { formatSchedule } from "../../text.js";
 import { applyAction } from "./apply.js";
 import { unwrap, type CommandContext } from "./context.js";
 import { HELP_TEXT } from "./help.js";
-import { handleHoliday } from "./holidays.js";
-import { handleHost } from "./hosts.js";
-import {
-  handleAdd,
-  handleEdit,
-  handleForExisting,
-  handleList,
-  handleShow,
-} from "./reminders.js";
-
-const FLAG_SPEC: FlagSpec = {
-  withValue: ["at", "on", "message"],
-  boolean: [...CADENCE_FLAGS.keys()],
-};
+import { handleHolidayList, registerHolidayActions } from "./holidays.js";
+import { registerReminderForm } from "./modal.js";
+import { askFromRow } from "./prompt.js";
+import { handleList, handleShow } from "./reminders.js";
+import { registerRotationActions } from "./rotation.js";
 
 async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   const trimmed = text.trim();
@@ -33,11 +29,7 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
   if (subcommand === "holiday") {
-    await handleHoliday(ctx, rest);
-    return;
-  }
-  if (subcommand === "host") {
-    await handleHost(ctx, rest);
+    await handleHolidayList(ctx);
     return;
   }
   if (subcommand === "list") {
@@ -45,29 +37,11 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
 
-  const args = await unwrap(ctx, parseArgs(rest, FLAG_SPEC));
-  if (args === undefined) return;
-
-  switch (subcommand) {
-    case "add":
-      return handleAdd(ctx, args);
-    case "edit":
-      return handleEdit(ctx, args);
-    case "show":
-      return handleShow(ctx, args);
-    case "remove":
-      return handleForExisting(ctx, args, (reminder) => ({
-        summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,
-        action: { kind: "remove", code: reminder.code },
-      }));
-    case "run":
-      return handleForExisting(ctx, args, (reminder) => ({
-        summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
-        action: { kind: "run", code: reminder.code },
-      }));
-    default:
-      await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
+  if (subcommand === "show") {
+    await handleShow(ctx, rest);
+    return;
   }
+  await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
 }
 
 interface ConfirmationArgs {
@@ -114,6 +88,10 @@ async function resolveConfirmation({
 }
 
 export function registerRemind(app: App): void {
+  registerReminderForm(app);
+  registerRotationActions(app);
+  registerHolidayActions(app);
+
   app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
     await ack();
 
@@ -125,7 +103,7 @@ export function registerRemind(app: App): void {
     const ctx: CommandContext = {
       channelId: command.channel_id,
       userId: command.user_id,
-      respond: (text) => respond(text),
+      respond: (text, blocks) => respond(blocks ? { text, blocks } : text),
       ask: async (summary, action) => {
         const pendingId = put({
           action,
@@ -143,6 +121,28 @@ export function registerRemind(app: App): void {
       await respond("Something went wrong. Check the logs.");
     }
   });
+
+  app.action<BlockAction<ButtonAction>>(
+    RUN_REMINDER_ACTION,
+    async ({ ack, body, respond, logger }) => {
+      await ack();
+      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => ({
+        summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
+        action: { kind: "run", code: reminder.code },
+      }));
+    },
+  );
+
+  app.action<BlockAction<ButtonAction>>(
+    REMOVE_REMINDER_ACTION,
+    async ({ ack, body, respond, logger }) => {
+      await ack();
+      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => ({
+        summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,
+        action: { kind: "remove", code: reminder.code },
+      }));
+    },
+  );
 
   app.action<BlockAction<ButtonAction>>(
     APPROVE_ACTION,

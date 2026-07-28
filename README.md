@@ -22,10 +22,10 @@ anyone can manage from Slack itself, with no redeploy.
 | --- | --- | --- |
 | **AI replies** | `@Bumblebee what's 2+2?` | Answers via Azure OpenAI. Thread-aware — ask a follow-up in the same thread and it keeps context. |
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
-| **Reminder commands** | `/bee-remind …` | Add, edit, list, show, remove and test-fire reminders per channel. |
-| **Host rotation** | `/bee-remind host set standup @a @b` | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
+| **Reminder commands** | `/bee-remind list` · `show` · `holiday` | Three read-only commands; creating, editing, running and removing are buttons and dialogs. |
+| **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Skip today** | The button on a rotating reminder | The host hands over to the next person, or anyone marks themselves out for the day. |
-| **Holidays** | `/bee-remind holiday add 2026-08-17` | A date that suppresses reminders in **every** channel. |
+| **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
@@ -78,12 +78,14 @@ At [api.slack.com/apps](https://api.slack.com/apps):
    a channel the bot has joined.
 
 > [!IMPORTANT]
-> Three settings **fail silently** when missed — nothing errors, the feature just does nothing:
+> Two settings **fail silently** when missed — nothing errors, the feature just does nothing:
 >
-> - **Interactivity off** → every button (Approve/Reject, `Skip today`) renders and does nothing.
-> - **"Escape channels, users, and links" unticked** on `/bee-remind` → `@nuki` arrives as literal
->   text, so mentions never render and `host set` can't read a roster at all.
+> - **Interactivity off** → every button and dialog (Approve/Reject, `Skip today`, `Edit`,
+>   `+ New reminder`) renders and does nothing.
 > - **Callback ID ≠ `remind_from_message`** → the shortcut appears in the ⋮ menu and does nothing.
+>
+> "Escape channels, users, and links" no longer matters: no command takes a person's name any more —
+> rosters are picked in a dialog, which returns real user IDs either way.
 
 <details>
 <summary>App display settings (optional, for flavor)</summary>
@@ -132,61 +134,60 @@ The easiest route, and the only one with a real multi-line message box:
 No quotes, no escaping. The dialog's **Create** button *is* the confirmation, so there's no second
 Approve step here. It posts back exactly as written: Bumblebee records that the text came from Slack
 and renders it as Slack markup rather than converting it. (`*word*` is bold in a Slack message but
-italic in the Markdown `/bee-remind add` uses — converting would silently change your text.)
+italic in the Markdown a message typed into the form uses — converting would silently change your
+text.)
 
 ### Managing reminders with `/bee-remind`
 
 `/bee-remind` acts on the channel you run it in.
 
 ```
-/bee-remind add standup --at 09:00 --message "Standup time!" \
-                        --on monday,tuesday,wednesday,thursday,friday
-/bee-remind add sprint  --at 09:00 --message "Sprint planning" --on monday --every-2-week
+/bee-remind list                    every reminder here, each with Edit,
+                                    Run now and Remove, plus + New reminder
+/bee-remind show <code>
 
-/bee-remind list · show <code> · edit <code> --…
-/bee-remind remove <code> · run <code>
-
-/bee-remind host set standup @alice @bob @cara · host clear <code>
-/bee-remind host skip <code> · host next <code> @who
-
-/bee-remind holiday add 2026-08-17 · holiday list · holiday remove 2026-08-17
+/bee-remind holiday                 the shared list, a date picker to add,
+                                    and Remove on each
 /bee-remind help
 ```
 
-- **`--on`** takes `daily` (the default) or full day names — `monday,wednesday`. No ranges, no
-  abbreviations.
-- **Cadence** is `--every-1-week` (default), `--every-2-week` or `--every-3-week`. The last two need
-  exactly one day in `--on`, since the gap is measured in days.
-- **`--message` needs quotes** whenever it contains a space. Without them only the first word is taken
-  and the rest is rejected, so you get an error rather than a truncated reminder. A slash command is
-  one line, so use `\n` for a line break: `--message "Standup!\n• Yesterday\n• Today"`.
-- **The message posts exactly as stored**, apart from the host line a rotation appends. Type
-  `@someone` or `@channel` to mention them.
-- **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing.
+**Creating and editing happen in a dialog, not on the command line.** `+ New reminder` on
+`/bee-remind list` opens a blank form; `Edit` on any row opens it prefilled. The time, days and
+cadence are pickers, so there are no flags to remember and no quoting rules to get wrong.
+
+- **Cadence** is every 1, 2 or 3 weeks. The last two need exactly one day selected, since the gap is
+  measured in days.
+- **A name can't be changed once set** — it is how the reminder is looked up, so the Edit form shows
+  it rather than offering it. Remove and recreate to rename.
+- **The message posts exactly as stored**, apart from the host line a rotation appends. An `@name`
+  typed into the form is plain text; to mention someone for real, write the message in Slack and use
+  **Make this a reminder**, which keeps the mention intact.
+- **Run now** posts immediately but still respects holidays and cadence, so it rehearses the real
+  thing. Unlike the form's **Create**/**Save**, the row buttons still ask for Approve first — a
+  click is too easy to hit by accident, and **Remove** cannot be undone.
 - **Holidays are global** — a date added in any channel skips reminders in every channel.
-  `holiday list` shows who added each one and where.
+  `holiday` shows who added each one and where.
 
 > [!NOTE]
 > **Every command that changes data asks first.** You get a private preview with Approve / Reject;
 > only after Approve does it apply and announce the change in the channel. Confirmations expire after
-> 5 minutes, are single-use, and only the person who ran the command can click them.
+> 5 minutes, are single-use, and only the person who ran the command can click them. The forms are
+> the exception: **Create** and **Save** *are* the confirmation, so they apply straight away.
 
 ### Host rotation
 
 Give a reminder a roster and each post names a different host.
 
-```
-/bee-remind host set standup @alice @bob @cara
-```
+Pick the roster in the **Host rotation** field on the form — **+ New reminder** or **Edit**. Leaving
+it empty means no rotation, and emptying it later clears one.
 
 - **The order is shuffled, and nobody hosts twice until everyone has had a turn.** Each pass is a
   *lap*: the order is drawn when the lap starts and visible from then on, so `show <code>` tells you
   when your turn is coming.
-- **`host skip`** moves whoever is up to the back of the lap — they keep their turn, they just aren't
-  up today. **`host next @who`** puts someone up next.
-- **`host set` replaces the whole list.** Anyone who already hosted this lap stays hosted, whoever was
-  up stays up, and a new name joins the current lap. The confirmation shows a diff, so a name you
-  dropped by accident is visible.
+- **`show <code>` carries the lap controls.** **Skip host** moves whoever is up to the back of the
+  lap — they keep their turn, they just aren't up today. The picker beside it puts someone up next.
+- **Saving the form replaces the whole roster.** Anyone who already hosted this lap stays hosted,
+  whoever was up stays up, and a new name joins the current lap.
 - **`run` uses a turn**, exactly as a real fire does. A post that fails does not.
 - `show <code>` prints the whole roster: ✓ for those who have hosted this lap (with the date), → for
   whoever is up, and the rest below.
@@ -243,21 +244,23 @@ src/
 │   └── scheduler.ts            minute tick, TZ assertion, last-tick state
 ├── ai/index.ts                 Azure OpenAI client + generateReply()
 └── slack/
-    ├── blocks.ts               reminder post + confirmation buttons
+    ├── blocks.ts               reminder post, confirmation buttons, list rows
+    ├── modals.ts               the reminder form: create · from-message · edit
     ├── text.ts                 mrkdwn formatting helpers (pure)
-    ├── args.ts                 slash-command parsing (pure)
     ├── pending.ts              confirmations awaiting a click
     └── listeners/
         ├── index.ts            wires every listener to the app
         ├── status.ts           /bee-status
         ├── mention.ts          app_mention → thread-aware AI reply
-        ├── shortcut.ts         "Make this a reminder" → modal → create
+        ├── shortcut.ts         "Make this a reminder" → opens the form
         ├── skip.ts             the Skip today button
         └── remind/             /bee-remind, split by subcommand family
             ├── index.ts        register + subcommand dispatch + Approve/Reject
-            ├── reminders.ts    add · edit · list · show · remove · run
-            ├── hosts.ts        host set · clear · skip · next
-            ├── holidays.ts     holiday add · list · remove
+            ├── modal.ts        the form's view handler + New/Edit buttons
+            ├── reminders.ts    list · show
+            ├── rotation.ts     Skip host · put someone up next
+            ├── prompt.ts       raise a confirmation from a button
+            ├── holidays.ts     the shared list + its date picker
             ├── apply.ts        what each approved confirmation actually does
             ├── context.ts      the command context shared by the handlers
             └── help.ts         /bee-remind help
@@ -358,7 +361,6 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 | Symptom | Cause |
 | --- | --- |
 | Buttons render but nothing happens | **Interactivity** is off in the Slack app config. |
-| `@nuki` shows as plain text; `host set` rejects everyone | **"Escape channels, users, and links"** is unticked on the `/bee-remind` slash command. |
 | The ⋮ menu item exists but does nothing | The shortcut's callback ID isn't exactly `remind_from_message`. |
 | Reminders fire an hour or more off | `TZ` isn't `Asia/Jakarta`. Boot logs a `TZ misconfigured` error; check `tzdata` is in the image. |
 | Every reminder posts twice | Two Socket Mode connections on one app token — usually `npm run dev` running against the live container. |
@@ -371,9 +373,9 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 2. `docker exec bumblebee date` prints `WIB` / `+0700` — proves `tzdata` made it into the image.
 3. `@Bumblebee what's 2+2?` replies in-thread; a follow-up in that thread keeps context.
 4. `/bee-status` returns status, token usage and this channel's reminder state.
-5. `/bee-remind add smoke --at <a minute from now> --message "hello"` → Approve → it posts on the
-   minute.
+5. `/bee-remind list` → **+ New reminder** → name `smoke`, a minute from now, message `hello` →
+   **Create** → it posts on the minute. Then **Edit** on that row: the form comes up prefilled.
 6. ⋮ → **Make this a reminder** on any message → **Create** → it posts back byte-identical.
-7. `/bee-remind host set smoke @you @someone-else` → Approve → `/bee-remind run smoke` three times: a
+7. **Edit** `smoke`, add yourself and someone else to **Host rotation**, **Save** → **Run now** on that row three times: a
    different host each time, each a real blue mention, and the third rolls the lap over. Then
-   `/bee-remind remove smoke`.
+   **Remove** → Approve. The list it was clicked from should still be there afterwards.

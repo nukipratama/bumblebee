@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fallbackText, reminderBlocks, SKIP_ACTION, type ReminderPost } from "../../src/slack/blocks.js";
+import {
+  EDIT_REMINDER_ACTION,
+  NEW_REMINDER_ACTION,
+  REMOVE_REMINDER_ACTION,
+  RUN_REMINDER_ACTION,
+  fallbackText,
+  reminderBlocks,
+  reminderListBlocks,
+  SKIP_ACTION,
+  type ReminderPost,
+  type ReminderRow,
+} from "../../src/slack/blocks.js";
 
 function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
   return {
@@ -138,5 +149,51 @@ describe("fallbackText", () => {
 
   it("names the host so a notification says whose turn it is", () => {
     assert.equal(fallbackText(post({ host: "U_ALICE" })), "Standup time! — host <@U_ALICE>");
+  });
+});
+
+const row = (code: string): ReminderRow => ({ code, at: "09:00", recurrence: "weekdays" });
+
+const actionIds = (blocks: ReturnType<typeof reminderListBlocks>): string[] =>
+  blocks.flatMap((block) =>
+    block.type === "actions"
+      ? block.elements.map((element) => ("action_id" in element ? element.action_id! : ""))
+      : [],
+  );
+
+describe("reminderListBlocks", () => {
+  it("offers a way in when the channel has none, or there would be none", () => {
+    const blocks = reminderListBlocks([]);
+
+    assert.ok(actionIds(blocks).includes(NEW_REMINDER_ACTION));
+    assert.match(JSON.stringify(blocks[0]), /No reminders/);
+  });
+
+  it("gives every row all three actions, each carrying its own code", () => {
+    const blocks = reminderListBlocks([row("standup"), row("retro")]);
+    const rowActions = blocks.filter((block) => block.type === "actions").slice(0, 2);
+
+    for (const [index, block] of rowActions.entries()) {
+      assert.ok(block.type === "actions");
+      assert.deepEqual(
+        block.elements.map((element) => ("action_id" in element ? element.action_id : "")),
+        [EDIT_REMINDER_ACTION, RUN_REMINDER_ACTION, REMOVE_REMINDER_ACTION],
+      );
+      for (const element of block.elements) {
+        assert.equal("value" in element ? element.value : "", ["standup", "retro"][index]);
+      }
+    }
+  });
+
+  it("names what it could not fit rather than dropping it silently", () => {
+    const codes = Array.from({ length: 25 }, (_, index) => `r${index}`);
+    const blocks = reminderListBlocks(codes.map(row));
+
+    assert.ok(blocks.length <= 50, `expected at most 50 blocks, got ${blocks.length}`);
+    const note = blocks.find(
+      (block) => block.type === "context" && JSON.stringify(block).includes("more, without buttons"),
+    );
+    assert.ok(note, "expected a note naming the overflow");
+    assert.ok(JSON.stringify(note).includes("r24"));
   });
 });

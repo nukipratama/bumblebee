@@ -16,7 +16,7 @@ Four layers; dependencies only ever point downward. Putting a change in the wron
 way this codebase gets messy.
 
 ```
-slack/  ─┐   Slack adapter: listeners, blocks, message text, arg parsing
+slack/  ─┐   Slack adapter: listeners, blocks, modals, message text
 app/    ─┤   use cases: fireReminder + the minute-tick scheduler
 store/  ─┤   SQLite persistence and schema migrations
 domain/ ─┘   pure logic and types: no Slack, no database, no I/O
@@ -43,28 +43,30 @@ src/
 │   └── scheduler.ts            # startScheduler, getLastTickAt, the Jakarta TZ assertion
 ├── ai/index.ts                 # AzureOpenAI client + generateReply() — returns raw Markdown
 └── slack/
-    ├── blocks.ts               # reminder post blocks + confirm buttons; SKIP/APPROVE/REJECT ids
+    ├── blocks.ts               # reminder post blocks, confirm buttons, the list rows + their ids
+    ├── modals.ts               # the one reminder form: create · from-message · edit (pure)
     ├── text.ts                 # mrkdwn formatting (pure — takes data, never queries)
-    ├── args.ts                 # slash-command parsing (pure)
     ├── pending.ts              # PendingAction union + confirmations awaiting a click
     └── listeners/
         ├── index.ts            # registerListeners(app)
         ├── status.ts           # /bee-status
         ├── mention.ts          # app_mention → thread-aware Azure OpenAI reply
-        ├── shortcut.ts         # "Make this a reminder" message shortcut → modal → create
+        ├── shortcut.ts         # "Make this a reminder" message shortcut → opens the form
         ├── skip.ts             # Skip today button — host handover + out-today list
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
-            ├── reminders.ts    # add · edit · list · show · remove · run
-            ├── hosts.ts        # host set · clear · skip · next
-            ├── holidays.ts     # holiday add · list · remove
+            ├── modal.ts        # the form's view handler + the New/Edit buttons
+            ├── reminders.ts    # list · show
+            ├── rotation.ts     # Skip host · put someone up next
+            ├── prompt.ts       # askFromRow — raise a confirmation from a button
+            ├── holidays.ts     # the shared list + its date picker
             ├── apply.ts        # applyAction — what each approved confirmation does
             ├── context.ts      # CommandContext, unwrap, requireReminder, readCode
             └── help.ts         # HELP_TEXT
 
 tests/                          # mirrors the src/ path of what it covers
 ├── domain/                     # clock · code · rotation · schedule
-└── slack/                      # args · blocks · pending
+└── slack/                      # blocks · modals · pending
 ```
 
 - **New rule or calculation** → `domain/`, with a unit test; call it from the listener. Anything a
@@ -89,9 +91,10 @@ tests/                          # mirrors the src/ path of what it covers
 - **Only a successful post advances a lap**, via `recordFire`, which stamps `last_fired_at`, writes the
   history row and rewrites the lap in one transaction. Never advance before the post — a Slack failure
   would silently cost someone their turn.
-- **Every `/bee-remind` command that writes data goes through Approve/Reject**, and re-validates
-  against current state when the button is clicked — state can change between prompt and click. That
-  re-read lives in `slack/listeners/remind/apply.ts`.
+- **Every button that writes data goes through Approve/Reject**, and re-validates against current
+  state when the button is clicked — state can change between prompt and click. That re-read lives in
+  `slack/listeners/remind/apply.ts`. The surviving commands (`list`, `show`, `holiday`, `help`) are
+  all read-only; forms write on submit instead, which is their own confirmation.
 
 ## Language & module conventions
 
@@ -122,13 +125,23 @@ tests/                          # mirrors the src/ path of what it covers
 - Thread context comes from `client.conversations.replies` (needs `channels:history` +
   `groups:history` scopes); a top-level mention is single-turn.
 - Bot scopes live in the Slack app config; the README's "Slack app setup" is the source of truth.
-- Three app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
-  on or every button does nothing; *"Escape channels, users, and links"* must be ticked on
-  `/bee-remind` or `@someone` arrives as literal text with no user ID; and the message shortcut's
-  callback ID must be exactly `remind_from_message` or the menu item appears and does nothing.
-- Slash-command replies use `respond()` (ephemeral) with hand-rolled mrkdwn. Events and actions have no
-  `respond()` — use `client.chat.postEphemeral` there.
-- Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`) are baked into
+- Two app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
+  on or every button and dialog does nothing; and the message shortcut's callback ID must be exactly
+  `remind_from_message` or the menu item appears and does nothing. *"Escape channels, users, and
+  links"* used to be a third, but no command takes a person's name any more.
+- Slash-command replies use `respond()`, and so do **actions on an ephemeral reply** — a button in a
+  `/bee-remind` reply carries a `response_url`, which is what lets `askFromRow` and the Approve/Reject
+  handlers reply at all. Actions on a *posted* message (the `Skip today` button) have no `response_url`
+  — that path uses `client.chat.update` / `postEphemeral`.
+- **Confirm from a button with a fresh ephemeral, never `replace_original`**, or the list the button
+  was clicked from is destroyed by its own confirmation.
+- **A form's submit is its confirmation.** `add`/`edit` no longer exist as commands: creating and
+  editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
+  Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.
+- **Never call `setReminderMessage` for an unchanged body.** It resets `body_format` to `markdown`,
+  which silently reinterprets a body captured from a Slack message.
+- Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
+  `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
 - **A reminder's message has a dialect.** `reminders.body_format` is `markdown` for anything typed into
   `/bee-remind` and `mrkdwn` for anything captured from a Slack message. `slack/blocks.ts` renders
