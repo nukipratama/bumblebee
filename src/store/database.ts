@@ -69,6 +69,10 @@ const migrations: string[] = [
    )`,
   // fired_on is only a date, but the handover window is measured in minutes.
   `ALTER TABLE reminder_fires ADD COLUMN fired_at TEXT`,
+  // Pause/resume is gone and the scheduler no longer filters on `enabled`, so a
+  // row left at 0 would silently start firing. Normalise it here instead. The
+  // column itself has to stay: these migrations are append-only.
+  `UPDATE reminders SET enabled = 1 WHERE enabled = 0`,
 ];
 
 export function initDb(): void {

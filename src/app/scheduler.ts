@@ -1,7 +1,7 @@
 import type { App, Logger } from "@slack/bolt";
 import { localParts } from "../domain/clock.js";
 import { matches } from "../domain/schedule.js";
-import { listEnabledReminders } from "../store/reminders.js";
+import { listAllReminders } from "../store/reminders.js";
 import { fireReminder } from "./fire.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -32,7 +32,7 @@ async function runTick(app: App): Promise<void> {
   const wallClock = localParts(now);
   lastTickAt = now;
 
-  for (const reminder of listEnabledReminders()) {
+  for (const reminder of listAllReminders()) {
     if (!matches(reminder, wallClock)) continue;
 
     try {

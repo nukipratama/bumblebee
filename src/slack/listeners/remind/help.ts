@@ -3,7 +3,7 @@ export const HELP_TEXT = [
   "",
   "*Reminders*",
   '• `add <code> --at HH:MM --message "…" [--on <days>] [--every-2-week|--every-3-week]`',
-  "• `list` · `show <code>` · `edit <code> --…` · `pause <code>` · `resume <code>`",
+  "• `list` · `show <code>` · `edit <code> --…`",
   "• `remove <code>` · `run <code>` — `run` posts now, still respecting holidays and cadence",
   "",
   "*Host rotation* — the bot appends `🎙 Host: @someone`, a different person each time",

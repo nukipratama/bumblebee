@@ -16,7 +16,6 @@ const REMINDER_COLUMNS = `id,
          message,
          body_format   AS bodyFormat,
          every_n_weeks AS everyNWeeks,
-         enabled,
          last_fired_at AS lastFiredAt,
          created_by    AS createdBy,
          created_at    AS createdAt`;
@@ -32,10 +31,6 @@ const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
          added_in_channel AS addedInChannel,
          added_at         AS addedAt`;
-
-type ReminderRow = Omit<Reminder, "enabled"> & { enabled: number };
-
-const toReminder = (row: ReminderRow): Reminder => ({ ...row, enabled: row.enabled === 1 });
 
 export function insertReminder(reminder: NewReminder): void {
   stmt(
@@ -56,31 +51,28 @@ export function insertReminder(reminder: NewReminder): void {
 }
 
 export function getReminder(channelId: string, code: string): Reminder | undefined {
-  const row = stmt(
-    `SELECT ${REMINDER_COLUMNS} FROM reminders WHERE channel_id = ? AND code = ?`,
-  ).get(channelId, code) as unknown as ReminderRow | undefined;
-  return row && toReminder(row);
+  return stmt(`SELECT ${REMINDER_COLUMNS} FROM reminders WHERE channel_id = ? AND code = ?`).get(
+    channelId,
+    code,
+  ) as unknown as Reminder | undefined;
 }
 
 export function getReminderById(id: number): Reminder | undefined {
-  const row = stmt(`SELECT ${REMINDER_COLUMNS} FROM reminders WHERE id = ?`).get(id) as unknown as
-    | ReminderRow
+  return stmt(`SELECT ${REMINDER_COLUMNS} FROM reminders WHERE id = ?`).get(id) as unknown as
+    | Reminder
     | undefined;
-  return row && toReminder(row);
 }
 
 export function listReminders(channelId: string): Reminder[] {
-  const rows = stmt(
+  return stmt(
     `SELECT ${REMINDER_COLUMNS} FROM reminders WHERE channel_id = ? ORDER BY at, code`,
-  ).all(channelId) as unknown as ReminderRow[];
-  return rows.map(toReminder);
+  ).all(channelId) as unknown as Reminder[];
 }
 
-export function listEnabledReminders(): Reminder[] {
-  const rows = stmt(
-    `SELECT ${REMINDER_COLUMNS} FROM reminders WHERE enabled = 1 ORDER BY channel_id, at`,
-  ).all() as unknown as ReminderRow[];
-  return rows.map(toReminder);
+export function listAllReminders(): Reminder[] {
+  return stmt(
+    `SELECT ${REMINDER_COLUMNS} FROM reminders ORDER BY channel_id, at`,
+  ).all() as unknown as Reminder[];
 }
 
 export function setReminderAt(channelId: string, code: string, at: string): void {
@@ -101,14 +93,6 @@ export function setReminderMessage(channelId: string, code: string, message: str
 export function setReminderCadence(channelId: string, code: string, everyNWeeks: number): void {
   stmt("UPDATE reminders SET every_n_weeks = ? WHERE channel_id = ? AND code = ?").run(
     everyNWeeks,
-    channelId,
-    code,
-  );
-}
-
-export function setReminderEnabled(channelId: string, code: string, enabled: boolean): void {
-  stmt("UPDATE reminders SET enabled = ? WHERE channel_id = ? AND code = ?").run(
-    enabled ? 1 : 0,
     channelId,
     code,
   );
@@ -140,15 +124,6 @@ export function recordFire(fire: NewFire): void {
     );
     writeLap(fire.reminderId, fire.nextLap);
   });
-}
-
-export function countReminders(channelId: string): { enabled: number; paused: number } {
-  return stmt(
-    `SELECT COALESCE(SUM(enabled), 0)     AS enabled,
-            COALESCE(SUM(1 - enabled), 0) AS paused
-       FROM reminders
-      WHERE channel_id = ?`,
-  ).get(channelId) as unknown as { enabled: number; paused: number };
 }
 
 export function insertHoliday(holiday: Omit<Holiday, "addedAt">): void {

@@ -22,11 +22,11 @@ anyone can manage from Slack itself, with no redeploy.
 | --- | --- | --- |
 | **AI replies** | `@Bumblebee what's 2+2?` | Answers via Azure OpenAI. Thread-aware — ask a follow-up in the same thread and it keeps context. |
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
-| **Reminder commands** | `/bee-remind …` | Add, edit, pause, list, show, remove and test-fire reminders per channel. |
+| **Reminder commands** | `/bee-remind …` | Add, edit, list, show, remove and test-fire reminders per channel. |
 | **Host rotation** | `/bee-remind host set standup @a @b` | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Skip today** | The button on a rotating reminder | The host hands over to the next person, or anyone marks themselves out for the day. |
 | **Holidays** | `/bee-remind holiday add 2026-08-17` | A date that suppresses reminders in **every** channel. |
-| **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder counts, next fire and last scheduler tick. |
+| **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
 
@@ -143,7 +143,7 @@ italic in the Markdown `/bee-remind add` uses — converting would silently chan
                         --on monday,tuesday,wednesday,thursday,friday
 /bee-remind add sprint  --at 09:00 --message "Sprint planning" --on monday --every-2-week
 
-/bee-remind list · show <code> · edit <code> --… · pause <code> · resume <code>
+/bee-remind list · show <code> · edit <code> --…
 /bee-remind remove <code> · run <code>
 
 /bee-remind host set standup @alice @bob @cara · host clear <code>
@@ -163,7 +163,6 @@ italic in the Markdown `/bee-remind add` uses — converting would silently chan
 - **The message posts exactly as stored**, apart from the host line a rotation appends. Type
   `@someone` or `@channel` to mention them.
 - **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing.
-  It does ignore `pause`.
 - **Holidays are global** — a date added in any channel skips reminders in every channel.
   `holiday list` shows who added each one and where.
 
@@ -256,7 +255,7 @@ src/
         ├── skip.ts             the Skip today button
         └── remind/             /bee-remind, split by subcommand family
             ├── index.ts        register + subcommand dispatch + Approve/Reject
-            ├── reminders.ts    add · edit · list · show · pause · resume · remove · run
+            ├── reminders.ts    add · edit · list · show · remove · run
             ├── hosts.ts        host set · clear · skip · next
             ├── holidays.ts     holiday add · list · remove
             ├── apply.ts        what each approved confirmation actually does

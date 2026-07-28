@@ -18,7 +18,6 @@ import {
   setReminderAt,
   setReminderCadence,
   setReminderDays,
-  setReminderEnabled,
   setReminderMessage,
 } from "../../../store/reminders.js";
 import type { PendingEntry } from "../../pending.js";
@@ -80,17 +79,6 @@ function applyRemove(entry: PendingEntry, code: string): ApplyResult {
   };
 }
 
-function applySetEnabled(entry: PendingEntry, code: string, enabled: boolean): ApplyResult {
-  if (!getReminder(entry.channelId, code)) return gone(code);
-
-  setReminderEnabled(entry.channelId, code, enabled);
-  const verb = enabled ? "resumed" : "paused";
-  return {
-    ephemeral: `Reminder \`${code}\` ${verb}.`,
-    channel: `${mention(entry.userId)} ${verb} reminder \`${code}\``,
-  };
-}
-
 async function applyRun(
   entry: PendingEntry,
   code: string,
@@ -105,9 +93,7 @@ async function applyRun(
     return { ephemeral: `Posted \`${code}\`.${host}` };
   }
 
-  const whenNext = existing.enabled
-    ? `\nNext fire: ${formatNextFire(existing, listHolidayDates())}`
-    : "";
+  const whenNext = `\nNext fire: ${formatNextFire(existing, listHolidayDates())}`;
   return { ephemeral: `Skipped \`${code}\`: ${outcome.reason}.${whenNext}` };
 }
 
@@ -205,8 +191,6 @@ export async function applyAction(entry: PendingEntry, client: WebClient): Promi
       return applyEdit(entry, action.code, action.changes);
     case "remove":
       return applyRemove(entry, action.code);
-    case "setEnabled":
-      return applySetEnabled(entry, action.code, action.enabled);
     case "run":
       return applyRun(entry, action.code, client);
     case "holidayAdd":
