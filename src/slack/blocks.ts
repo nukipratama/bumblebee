@@ -4,6 +4,8 @@ import type { BodyFormat } from "../domain/types.js";
 export const SKIP_ACTION = "reminder_skip";
 export const APPROVE_ACTION = "remind_approve";
 export const REJECT_ACTION = "remind_reject";
+export const NEW_REMINDER_ACTION = "remind_new";
+export const EDIT_REMINDER_ACTION = "remind_edit";
 
 export interface ReminderPost {
   body: string;
@@ -86,6 +88,49 @@ export function confirmBlocks(summary: string, pendingId: string): KnownBlock[] 
           style: "danger",
           text: { type: "plain_text", text: "Reject" },
           value: pendingId,
+        },
+      ],
+    },
+  ];
+}
+
+export interface ReminderRow {
+  code: string;
+  at: string;
+  recurrence: string;
+}
+
+/**
+ * Rows carry their own code, because a click tells us nothing but the button's
+ * value. An empty channel still gets the button — it is the only way to create
+ * a reminder that isn't built from an existing message.
+ */
+export function reminderListBlocks(rows: readonly ReminderRow[]): KnownBlock[] {
+  const heading =
+    rows.length === 0 ? "No reminders in this channel yet." : "*Reminders in this channel*";
+
+  return [
+    { type: "section", text: { type: "mrkdwn", text: heading } },
+    ...rows.map(
+      (row): KnownBlock => ({
+        type: "section",
+        text: { type: "mrkdwn", text: `\`${row.at}\`  \`${row.code}\`  ${row.recurrence}` },
+        accessory: {
+          type: "button",
+          action_id: EDIT_REMINDER_ACTION,
+          text: { type: "plain_text", text: "Edit" },
+          value: row.code,
+        },
+      }),
+    ),
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          action_id: NEW_REMINDER_ACTION,
+          style: "primary",
+          text: { type: "plain_text", text: "+ New reminder" },
         },
       ],
     },

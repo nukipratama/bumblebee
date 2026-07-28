@@ -1,4 +1,4 @@
-import { DAY_NAMES, EVERY_DAY, daysColumn, isDayName, isEveryDay } from "../domain/days.js";
+import { EVERY_DAY, daysColumn, isEveryDay } from "../domain/days.js";
 import { fail, ok, type Parsed } from "../domain/result.js";
 
 export interface FlagSpec {
@@ -13,14 +13,7 @@ export interface Args {
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const LABELLED_MENTION = /<@([UWB][A-Z0-9]+)\|[^>]*>/g;
 const USER_MENTION = /^<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>$/;
-
-export const CADENCE_FLAGS: ReadonlyMap<string, number> = new Map([
-  ["every-1-week", 1],
-  ["every-2-week", 2],
-  ["every-3-week", 3],
-]);
 
 const flagList = (names: Iterable<string>): string =>
   [...names].map((name) => "`--" + name + "`").join(", ");
@@ -99,23 +92,6 @@ export function parseAt(value: string): Parsed<string> {
     : fail(`\`${value}\` is not a 24-hour time — use HH:MM, like \`09:00\` or \`16:30\``);
 }
 
-export function parseDays(value: string): Parsed<string> {
-  if (value === "daily") return ok(EVERY_DAY);
-
-  const names = value.split(",").map((name) => name.trim().toLowerCase());
-  const chosen = new Set<string>();
-
-  for (const name of names) {
-    if (!isDayName(name)) {
-      return fail(`\`${name}\` is not a day — use \`daily\` or full names: ${DAY_NAMES.join(", ")}`);
-    }
-    if (chosen.has(name)) return fail(`\`${name}\` listed twice`);
-    chosen.add(name);
-  }
-
-  return ok(daysColumn(chosen));
-}
-
 /** Day checkboxes from the New Reminder dialog. All seven is `*`, as `--on daily` stores. */
 export function daysFromSelection(dayNames: readonly string[]): Parsed<string> {
   if (dayNames.length === 0) return fail("pick at least one day");
@@ -135,23 +111,6 @@ export function parseDate(value: string): Parsed<string> {
   }
 
   return ok(value);
-}
-
-export function parseCadence(flags: Map<string, string | true>): Parsed<number> {
-  const given = [...CADENCE_FLAGS.keys()].filter((flag) => flags.has(flag));
-
-  if (given.length > 1) return fail(`only one of ${flagList(given)}`);
-  return ok(given.length === 0 ? 1 : CADENCE_FLAGS.get(given[0]!)!);
-}
-
-/** A slash command is one line, so a literal `\n` is how a multi-line message is typed. */
-export function unescapeNewlines(value: string): string {
-  return value.replaceAll(String.raw`\n`, "\n");
-}
-
-/** Slack sends `<@U123|nuki>` when escaping is on; the label stops it rendering as a mention. */
-export function normalizeMentions(text: string): string {
-  return text.replace(LABELLED_MENTION, "<@$1>");
 }
 
 export function parseUserMentions(tokens: readonly string[]): Parsed<string[]> {

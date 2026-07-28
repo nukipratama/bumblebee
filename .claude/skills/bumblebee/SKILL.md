@@ -43,7 +43,8 @@ src/
 │   └── scheduler.ts            # startScheduler, getLastTickAt, the Jakarta TZ assertion
 ├── ai/index.ts                 # AzureOpenAI client + generateReply() — returns raw Markdown
 └── slack/
-    ├── blocks.ts               # reminder post blocks + confirm buttons; SKIP/APPROVE/REJECT ids
+    ├── blocks.ts               # reminder post blocks, confirm buttons, the list rows + their ids
+    ├── modals.ts               # the one reminder form: create · from-message · edit (pure)
     ├── text.ts                 # mrkdwn formatting (pure — takes data, never queries)
     ├── args.ts                 # slash-command parsing (pure)
     ├── pending.ts              # PendingAction union + confirmations awaiting a click
@@ -51,11 +52,12 @@ src/
         ├── index.ts            # registerListeners(app)
         ├── status.ts           # /bee-status
         ├── mention.ts          # app_mention → thread-aware Azure OpenAI reply
-        ├── shortcut.ts         # "Make this a reminder" message shortcut → modal → create
+        ├── shortcut.ts         # "Make this a reminder" message shortcut → opens the form
         ├── skip.ts             # Skip today button — host handover + out-today list
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
-            ├── reminders.ts    # add · edit · list · show · remove · run
+            ├── modal.ts        # the form's view handler + the New/Edit buttons
+            ├── reminders.ts    # list · show · remove · run
             ├── hosts.ts        # host set · clear · skip · next
             ├── holidays.ts     # holiday add · list · remove
             ├── apply.ts        # applyAction — what each approved confirmation does
@@ -128,7 +130,13 @@ tests/                          # mirrors the src/ path of what it covers
   callback ID must be exactly `remind_from_message` or the menu item appears and does nothing.
 - Slash-command replies use `respond()` (ephemeral) with hand-rolled mrkdwn. Events and actions have no
   `respond()` — use `client.chat.postEphemeral` there.
-- Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`) are baked into
+- **A form's submit is its confirmation.** `add`/`edit` no longer exist as commands: creating and
+  editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
+  Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.
+- **Never call `setReminderMessage` for an unchanged body.** It resets `body_format` to `markdown`,
+  which silently reinterprets a body captured from a Slack message.
+- Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
+  `remind_edit`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
 - **A reminder's message has a dialect.** `reminders.body_format` is `markdown` for anything typed into
   `/bee-remind` and `mrkdwn` for anything captured from a Slack message. `slack/blocks.ts` renders

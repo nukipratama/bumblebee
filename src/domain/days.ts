@@ -35,3 +35,8 @@ export function isEveryDay(chosen: ReadonlySet<string>): boolean {
 export function isSingleDay(days: string): boolean {
   return days !== EVERY_DAY && !days.includes(",");
 }
+
+/** The inverse of `daysColumn`, for prefilling the form's checkboxes from a stored reminder. */
+export function daysToSelection(days: string): readonly string[] {
+  return days === EVERY_DAY ? DAY_NAMES : days.split(",").filter(isDayName);
+}
