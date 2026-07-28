@@ -1,7 +1,7 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { APPROVE_ACTION, REJECT_ACTION, confirmBlocks } from "../../blocks.js";
-import { CADENCE_FLAGS, parseArgs, type FlagSpec } from "../../args.js";
+import { parseArgs, type FlagSpec } from "../../args.js";
 import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
 import { formatSchedule } from "../../text.js";
 import { applyAction } from "./apply.js";
@@ -9,18 +9,11 @@ import { unwrap, type CommandContext } from "./context.js";
 import { HELP_TEXT } from "./help.js";
 import { handleHoliday } from "./holidays.js";
 import { handleHost } from "./hosts.js";
-import {
-  handleAdd,
-  handleEdit,
-  handleForExisting,
-  handleList,
-  handleShow,
-} from "./reminders.js";
+import { registerReminderForm } from "./modal.js";
+import { handleForExisting, handleList, handleShow } from "./reminders.js";
 
-const FLAG_SPEC: FlagSpec = {
-  withValue: ["at", "on", "message"],
-  boolean: [...CADENCE_FLAGS.keys()],
-};
+/** The schedule lives on the form now; what is left takes a code and nothing else. */
+const FLAG_SPEC: FlagSpec = { withValue: [], boolean: [] };
 
 async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   const trimmed = text.trim();
@@ -49,10 +42,6 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   if (args === undefined) return;
 
   switch (subcommand) {
-    case "add":
-      return handleAdd(ctx, args);
-    case "edit":
-      return handleEdit(ctx, args);
     case "show":
       return handleShow(ctx, args);
     case "remove":
@@ -114,6 +103,8 @@ async function resolveConfirmation({
 }
 
 export function registerRemind(app: App): void {
+  registerReminderForm(app);
+
   app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
     await ack();
 
@@ -125,7 +116,7 @@ export function registerRemind(app: App): void {
     const ctx: CommandContext = {
       channelId: command.channel_id,
       userId: command.user_id,
-      respond: (text) => respond(text),
+      respond: (text, blocks) => respond(blocks ? { text, blocks } : text),
       ask: async (summary, action) => {
         const pendingId = put({
           action,

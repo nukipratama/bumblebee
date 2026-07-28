@@ -2,14 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   daysFromSelection,
-  normalizeMentions,
   parseArgs,
   parseAt,
-  parseCadence,
   parseDate,
-  parseDays,
   parseUserMentions,
-  unescapeNewlines,
   type FlagSpec,
 } from "../../src/slack/args.js";
 
@@ -90,25 +86,6 @@ describe("parseAt", () => {
   });
 });
 
-describe("parseDays", () => {
-  it("maps daily to the wildcard", () => {
-    assert.equal(expectOk(parseDays("daily")), "*");
-  });
-
-  it("canonicalises a list into week order", () => {
-    assert.equal(expectOk(parseDays("wednesday,monday")), "monday,wednesday");
-  });
-
-  it("rejects abbreviations, ranges and nonsense", () => {
-    for (const bad of ["mon", "mon-fri", "funday"]) {
-      expectError(parseDays(bad), "is not a day");
-    }
-  });
-
-  it("rejects a day listed twice", () => {
-    expectError(parseDays("monday,monday"), "listed twice");
-  });
-});
 
 describe("parseDate", () => {
   it("accepts a real ISO date", () => {
@@ -126,44 +103,8 @@ describe("parseDate", () => {
   });
 });
 
-describe("parseCadence", () => {
-  it("defaults to every week when no flag is given", () => {
-    assert.equal(expectOk(parseCadence(new Map())), 1);
-  });
 
-  it("reads the number out of the flag name", () => {
-    assert.equal(expectOk(parseCadence(new Map([["every-2-week", true as const]]))), 2);
-    assert.equal(expectOk(parseCadence(new Map([["every-3-week", true as const]]))), 3);
-  });
 
-  it("rejects two cadence flags at once", () => {
-    const both = new Map([
-      ["every-2-week", true as const],
-      ["every-3-week", true as const],
-    ]);
-    expectError(parseCadence(both), "only one of");
-  });
-});
-
-describe("unescapeNewlines", () => {
-  it("turns a literal backslash-n into a newline", () => {
-    assert.equal(unescapeNewlines("a\\nb"), "a\nb");
-  });
-
-  it("leaves text without escapes alone", () => {
-    assert.equal(unescapeNewlines("plain text"), "plain text");
-  });
-});
-
-describe("normalizeMentions", () => {
-  it("strips the label so a mention renders", () => {
-    assert.equal(normalizeMentions("hi <@U123|nuki>"), "hi <@U123>");
-  });
-
-  it("leaves bare mentions and broadcasts untouched", () => {
-    assert.equal(normalizeMentions("<@U123> <!channel> plain"), "<@U123> <!channel> plain");
-  });
-});
 
 describe("parseUserMentions", () => {
   const ids = (tokens: string[]) => {
