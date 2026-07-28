@@ -197,11 +197,11 @@ Every rotating reminder posts with a **`Skip today`** button. It acts immediatel
 since it's one click saying one thing.
 
 - **If you're the host**, and it's **within 30 minutes** of the reminder firing, the next person in
-  the lap takes over today. The post rewrites itself to name them, adds you to `🗓 Out today`, and a
+  the lap takes over today. The post rewrites itself to name them, adds you to `🚪 Out today`, and a
   thread reply says so. **You keep your turn** — you go back into the lap, you just aren't up today.
   After 30 minutes the button reports itself closed: the meeting has effectively happened, and
   rewriting who was responsible would revise history.
-- **If you're not the host**, you're added to `🗓 Out today`. No time limit, and it doesn't touch the
+- **If you're not the host**, you're added to `🚪 Out today`. No time limit, and it doesn't touch the
   rotation. Anyone in the channel can do this — you don't have to be on the roster to say you'll be
   away.
 

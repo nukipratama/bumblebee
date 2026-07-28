@@ -54,17 +54,27 @@ describe("reminderBlocks — host and out-today", () => {
 
   it("lists one person out", () => {
     const text = contextText(reminderBlocks(post({ outToday: ["U_BOB"] })));
-    assert.equal(text, "🗓 Out today: <@U_BOB>");
+    assert.equal(text, "🚪 Out today: <@U_BOB>");
   });
 
   it("lists several people out, in the order given", () => {
     const text = contextText(reminderBlocks(post({ outToday: ["U_BOB", "U_DANA"] })));
-    assert.equal(text, "🗓 Out today: <@U_BOB>, <@U_DANA>");
+    assert.equal(text, "🚪 Out today: <@U_BOB>, <@U_DANA>");
   });
 
-  it("shows host and out-today together on one line", () => {
-    const text = contextText(reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB"] })));
-    assert.equal(text, "🎙 Host: <@U_ALICE>  ·  🗓 Out today: <@U_BOB>");
+  it("puts out-today on its own line, so a long list never crowds the host", () => {
+    const text = contextText(
+      reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB", "U_DANA"] })),
+    );
+    assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>, <@U_DANA>");
+  });
+
+  it("leaves no stray blank line when only one of the two is present", () => {
+    assert.equal(contextText(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
+    assert.equal(
+      contextText(reminderBlocks(post({ outToday: ["U_BOB"] }))),
+      "🚪 Out today: <@U_BOB>",
+    );
   });
 });
 
