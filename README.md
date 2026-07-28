@@ -22,10 +22,10 @@ anyone can manage from Slack itself, with no redeploy.
 | --- | --- | --- |
 | **AI replies** | `@Bumblebee what's 2+2?` | Answers via Azure OpenAI. Thread-aware — ask a follow-up in the same thread and it keeps context. |
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
-| **Reminder commands** | `/bee-remind …` | Add, edit, list, show, remove and test-fire reminders per channel. |
+| **Reminder commands** | `/bee-remind list` · `show` · `holiday` | Three read-only commands; creating, editing, running and removing are buttons and dialogs. |
 | **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Skip today** | The button on a rotating reminder | The host hands over to the next person, or anyone marks themselves out for the day. |
-| **Holidays** | `/bee-remind holiday add 2026-08-17` | A date that suppresses reminders in **every** channel. |
+| **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
@@ -146,7 +146,8 @@ text.)
                                     Run now and Remove, plus + New reminder
 /bee-remind show <code>
 
-/bee-remind holiday add 2026-08-17 · holiday list · holiday remove 2026-08-17
+/bee-remind holiday                 the shared list, a date picker to add,
+                                    and Remove on each
 /bee-remind help
 ```
 
@@ -165,7 +166,7 @@ cadence are pickers, so there are no flags to remember and no quoting rules to g
   thing. Unlike the form's **Create**/**Save**, the row buttons still ask for Approve first — a
   click is too easy to hit by accident, and **Remove** cannot be undone.
 - **Holidays are global** — a date added in any channel skips reminders in every channel.
-  `holiday list` shows who added each one and where.
+  `holiday` shows who added each one and where.
 
 > [!NOTE]
 > **Every command that changes data asks first.** You get a private preview with Approve / Reject;
@@ -246,7 +247,6 @@ src/
     ├── blocks.ts               reminder post, confirmation buttons, list rows
     ├── modals.ts               the reminder form: create · from-message · edit
     ├── text.ts                 mrkdwn formatting helpers (pure)
-    ├── args.ts                 slash-command parsing (pure)
     ├── pending.ts              confirmations awaiting a click
     └── listeners/
         ├── index.ts            wires every listener to the app
@@ -260,7 +260,7 @@ src/
             ├── reminders.ts    list · show
             ├── rotation.ts     Skip host · put someone up next
             ├── prompt.ts       raise a confirmation from a button
-            ├── holidays.ts     holiday add · list · remove
+            ├── holidays.ts     the shared list + its date picker
             ├── apply.ts        what each approved confirmation actually does
             ├── context.ts      the command context shared by the handlers
             └── help.ts         /bee-remind help

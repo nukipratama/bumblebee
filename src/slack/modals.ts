@@ -1,14 +1,29 @@
 import type { ViewStateValue } from "@slack/bolt";
 import type { KnownBlock, View } from "@slack/web-api";
 import { CODE_RULE, isReminderCode } from "../domain/code.js";
-import { DAY_NAMES, WEEKDAYS, daysToSelection } from "../domain/days.js";
+import { DAY_NAMES, EVERY_DAY, WEEKDAYS, daysColumn, daysToSelection, isEveryDay } from "../domain/days.js";
+import { fail, ok, type Parsed } from "../domain/result.js";
 import { cadenceFitsDays } from "../domain/schedule.js";
 import type { Host, Reminder } from "../domain/types.js";
-import { daysFromSelection, parseAt } from "./args.js";
 
 export const REMINDER_FORM = "remind_form";
 
 const DEFAULT_TIME = "09:00";
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function parseAt(value: string): Parsed<string> {
+  return TIME_PATTERN.test(value)
+    ? ok(value)
+    : fail(`\`${value}\` is not a 24-hour time — use HH:MM, like \`09:00\` or \`16:30\``);
+}
+
+/** All seven days is the daily marker, not a list of seven. */
+export function daysFromSelection(dayNames: readonly string[]): Parsed<string> {
+  if (dayNames.length === 0) return fail("pick at least one day");
+
+  const chosen = new Set(dayNames);
+  return ok(isEveryDay(chosen) ? EVERY_DAY : daysColumn(chosen));
+}
 
 /**
  * Which reminder the form is for, round-tripped through `private_metadata`.

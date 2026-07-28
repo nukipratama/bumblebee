@@ -2,7 +2,6 @@ import type { KnownBlock } from "@slack/web-api";
 import { fail, ok, type Parsed } from "../../../domain/result.js";
 import type { Reminder } from "../../../domain/types.js";
 import { getReminder } from "../../../store/reminders.js";
-import type { Args } from "../../args.js";
 import type { PendingAction } from "../../pending.js";
 
 export interface CommandContext {
@@ -25,13 +24,10 @@ export function requireReminder(channelId: string, code: string): Parsed<Reminde
   return reminder ? ok(reminder) : fail(`no reminder \`${code}\` in this channel`);
 }
 
-export function readCode(args: Args): Parsed<string> {
-  if (args.positionals.length > 1) {
-    const extra = args.positionals.slice(1).join(" ");
-    return fail(`unexpected \`${extra}\` — quote the message with \`"…"\``);
-  }
+export function readCode(rest: string): Parsed<string> {
+  const [code, ...extra] = rest.trim().split(/\s+/).filter(Boolean);
 
-  const code = args.positionals[0];
   if (!code) return fail("a code is required, like `standup`");
+  if (extra.length > 0) return fail(`unexpected \`${extra.join(" ")}\` — this takes just a code`);
   return ok(code);
 }

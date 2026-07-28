@@ -218,3 +218,69 @@ export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
 
   return blocks;
 }
+
+export const HOLIDAY_ADD_ACTION = "remind_holiday_add";
+export const HOLIDAY_REMOVE_ACTION = "remind_holiday_remove";
+
+export interface HolidayRow {
+  date: string;
+  addedBy: string;
+  addedInChannel: string;
+}
+
+/** One block per row here, so the ceiling is higher than the reminder list's. */
+const MAX_HOLIDAY_ROWS = 45;
+
+export function holidayListBlocks(rows: readonly HolidayRow[], footer: string): KnownBlock[] {
+  const shown = rows.slice(0, MAX_HOLIDAY_ROWS);
+  const hidden = rows.slice(MAX_HOLIDAY_ROWS);
+
+  return [
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: rows.length === 0 ? "No holidays recorded." : "*Holidays*" },
+    },
+    ...shown.map(
+      (row): KnownBlock => ({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `\`${row.date}\` — added by <@${row.addedBy}> in <#${row.addedInChannel}>`,
+        },
+        accessory: {
+          type: "button",
+          action_id: HOLIDAY_REMOVE_ACTION,
+          style: "danger",
+          text: { type: "plain_text", text: "Remove" },
+          value: row.date,
+        },
+      }),
+    ),
+    ...(hidden.length > 0
+      ? [
+          {
+            type: "context" as const,
+            elements: [
+              {
+                type: "mrkdwn" as const,
+                text: `${hidden.length} more, without buttons: ${hidden
+                  .map((row) => `\`${row.date}\``)
+                  .join(", ")}`,
+              },
+            ],
+          },
+        ]
+      : []),
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "datepicker",
+          action_id: HOLIDAY_ADD_ACTION,
+          placeholder: { type: "plain_text", text: "Add a holiday" },
+        },
+      ],
+    },
+    { type: "context", elements: [{ type: "mrkdwn", text: footer }] },
+  ];
+}

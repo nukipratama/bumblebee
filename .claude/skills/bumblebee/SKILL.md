@@ -16,7 +16,7 @@ Four layers; dependencies only ever point downward. Putting a change in the wron
 way this codebase gets messy.
 
 ```
-slack/  ─┐   Slack adapter: listeners, blocks, message text, arg parsing
+slack/  ─┐   Slack adapter: listeners, blocks, modals, message text
 app/    ─┤   use cases: fireReminder + the minute-tick scheduler
 store/  ─┤   SQLite persistence and schema migrations
 domain/ ─┘   pure logic and types: no Slack, no database, no I/O
@@ -46,7 +46,6 @@ src/
     ├── blocks.ts               # reminder post blocks, confirm buttons, the list rows + their ids
     ├── modals.ts               # the one reminder form: create · from-message · edit (pure)
     ├── text.ts                 # mrkdwn formatting (pure — takes data, never queries)
-    ├── args.ts                 # slash-command parsing (pure)
     ├── pending.ts              # PendingAction union + confirmations awaiting a click
     └── listeners/
         ├── index.ts            # registerListeners(app)
@@ -60,14 +59,14 @@ src/
             ├── reminders.ts    # list · show
             ├── rotation.ts     # Skip host · put someone up next
             ├── prompt.ts       # askFromRow — raise a confirmation from a button
-            ├── holidays.ts     # holiday add · list · remove
+            ├── holidays.ts     # the shared list + its date picker
             ├── apply.ts        # applyAction — what each approved confirmation does
             ├── context.ts      # CommandContext, unwrap, requireReminder, readCode
             └── help.ts         # HELP_TEXT
 
 tests/                          # mirrors the src/ path of what it covers
 ├── domain/                     # clock · code · rotation · schedule
-└── slack/                      # args · blocks · pending
+└── slack/                      # blocks · modals · pending
 ```
 
 - **New rule or calculation** → `domain/`, with a unit test; call it from the listener. Anything a
@@ -92,9 +91,10 @@ tests/                          # mirrors the src/ path of what it covers
 - **Only a successful post advances a lap**, via `recordFire`, which stamps `last_fired_at`, writes the
   history row and rewrites the lap in one transaction. Never advance before the post — a Slack failure
   would silently cost someone their turn.
-- **Every `/bee-remind` command that writes data goes through Approve/Reject**, and re-validates
-  against current state when the button is clicked — state can change between prompt and click. That
-  re-read lives in `slack/listeners/remind/apply.ts`.
+- **Every button that writes data goes through Approve/Reject**, and re-validates against current
+  state when the button is clicked — state can change between prompt and click. That re-read lives in
+  `slack/listeners/remind/apply.ts`. The surviving commands (`list`, `show`, `holiday`, `help`) are
+  all read-only; forms write on submit instead, which is their own confirmation.
 
 ## Language & module conventions
 

@@ -4,7 +4,6 @@ import {
   listHosts,
   listReminders,
 } from "../../../store/reminders.js";
-import type { Args } from "../../args.js";
 import { reminderDetailBlocks, reminderListBlocks } from "../../blocks.js";
 import {
   formatNextFire,
@@ -26,8 +25,8 @@ export async function handleList(ctx: CommandContext): Promise<void> {
   await ctx.respond("Reminders in this channel", reminderListBlocks(rows));
 }
 
-export async function handleShow(ctx: CommandContext, args: Args): Promise<void> {
-  const code = await unwrap(ctx, readCode(args));
+export async function handleShow(ctx: CommandContext, rest: string): Promise<void> {
+  const code = await unwrap(ctx, readCode(rest));
   if (code === undefined) return;
 
   const reminder = await unwrap(ctx, requireReminder(ctx.channelId, code));

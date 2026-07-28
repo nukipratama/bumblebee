@@ -7,20 +7,16 @@ import {
   RUN_REMINDER_ACTION,
   confirmBlocks,
 } from "../../blocks.js";
-import { parseArgs, type FlagSpec } from "../../args.js";
 import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
 import { formatSchedule } from "../../text.js";
 import { applyAction } from "./apply.js";
 import { unwrap, type CommandContext } from "./context.js";
 import { HELP_TEXT } from "./help.js";
-import { handleHoliday } from "./holidays.js";
+import { handleHolidayList, registerHolidayActions } from "./holidays.js";
 import { registerReminderForm } from "./modal.js";
 import { askFromRow } from "./prompt.js";
 import { handleList, handleShow } from "./reminders.js";
 import { registerRotationActions } from "./rotation.js";
-
-/** The schedule lives on the form now; what is left takes a code and nothing else. */
-const FLAG_SPEC: FlagSpec = { withValue: [], boolean: [] };
 
 async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   const trimmed = text.trim();
@@ -33,7 +29,7 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
   if (subcommand === "holiday") {
-    await handleHoliday(ctx, rest);
+    await handleHolidayList(ctx);
     return;
   }
   if (subcommand === "list") {
@@ -41,11 +37,8 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
 
-  const args = await unwrap(ctx, parseArgs(rest, FLAG_SPEC));
-  if (args === undefined) return;
-
   if (subcommand === "show") {
-    await handleShow(ctx, args);
+    await handleShow(ctx, rest);
     return;
   }
   await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
@@ -97,6 +90,7 @@ async function resolveConfirmation({
 export function registerRemind(app: App): void {
   registerReminderForm(app);
   registerRotationActions(app);
+  registerHolidayActions(app);
 
   app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
     await ack();

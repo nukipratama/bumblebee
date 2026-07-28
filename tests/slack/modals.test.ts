@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import type { Reminder } from "../../src/domain/types.js";
 import {
   type FormFields,
+  daysFromSelection,
+  parseAt,
   readSubmission,
   reminderModal,
   validate,
@@ -247,5 +249,44 @@ describe("reminderModal", () => {
       hint: { text: string };
     };
     assert.match(message.hint.text, /Markdown/);
+  });
+});
+
+describe("parseAt", () => {
+  it("accepts 24-hour times", () => {
+    assert.deepEqual(parseAt("09:00"), { ok: true, value: "09:00" });
+    assert.deepEqual(parseAt("23:59"), { ok: true, value: "23:59" });
+    assert.deepEqual(parseAt("00:00"), { ok: true, value: "00:00" });
+  });
+
+  it("rejects unpadded, out-of-range and malformed times", () => {
+    for (const bad of ["9:00", "25:00", "09:60", "0900", "9am"]) {
+      const parsed = parseAt(bad);
+      assert.equal(parsed.ok, false, `expected ${bad} to be rejected`);
+      assert.match(parsed.ok ? "" : parsed.error, /24-hour time/);
+    }
+  });
+});
+
+describe("daysFromSelection", () => {
+  const ALL = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+  it("returns a single day", () => {
+    assert.deepEqual(daysFromSelection(["monday"]), { ok: true, value: "monday" });
+  });
+
+  it("orders several days by the week, not by how they were ticked", () => {
+    assert.deepEqual(daysFromSelection(["friday", "monday", "wednesday"]), {
+      ok: true,
+      value: "monday,wednesday,friday",
+    });
+  });
+
+  it("collapses all seven to the daily marker", () => {
+    assert.deepEqual(daysFromSelection(ALL), { ok: true, value: "*" });
+  });
+
+  it("rejects an empty selection", () => {
+    assert.equal(daysFromSelection([]).ok, false);
   });
 });
