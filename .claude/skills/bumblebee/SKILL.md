@@ -57,7 +57,7 @@ src/
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
             ├── modal.ts        # the form's view handler + the New/Edit buttons
-            ├── reminders.ts    # list · show · remove · run
+            ├── reminders.ts    # list · show
             ├── hosts.ts        # host set · clear · skip · next
             ├── holidays.ts     # holiday add · list · remove
             ├── apply.ts        # applyAction — what each approved confirmation does
@@ -136,7 +136,7 @@ tests/                          # mirrors the src/ path of what it covers
 - **Never call `setReminderMessage` for an unchanged body.** It resets `body_format` to `markdown`,
   which silently reinterprets a body captured from a Slack message.
 - Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
-  `remind_edit`) are baked into
+  `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
 - **A reminder's message has a dialect.** `reminders.body_format` is `markdown` for anything typed into
   `/bee-remind` and `mrkdwn` for anything captured from a Slack message. `slack/blocks.ts` renders

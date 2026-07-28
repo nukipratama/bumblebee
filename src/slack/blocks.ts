@@ -6,6 +6,8 @@ export const APPROVE_ACTION = "remind_approve";
 export const REJECT_ACTION = "remind_reject";
 export const NEW_REMINDER_ACTION = "remind_new";
 export const EDIT_REMINDER_ACTION = "remind_edit";
+export const RUN_REMINDER_ACTION = "remind_run";
+export const REMOVE_REMINDER_ACTION = "remind_remove";
 
 export interface ReminderPost {
   body: string;
@@ -101,6 +103,44 @@ export interface ReminderRow {
 }
 
 /**
+ * Slack caps a message at 50 blocks and every row costs two, so past this many
+ * the list would be rejected outright rather than truncated. The overflow is
+ * named in a footnote instead of vanishing.
+ */
+const MAX_BUTTON_ROWS = 23;
+
+const rowBlocks = (row: ReminderRow): KnownBlock[] => [
+  {
+    type: "section",
+    text: { type: "mrkdwn", text: `\`${row.at}\`  \`${row.code}\`  ${row.recurrence}` },
+  },
+  {
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        action_id: EDIT_REMINDER_ACTION,
+        text: { type: "plain_text", text: "Edit" },
+        value: row.code,
+      },
+      {
+        type: "button",
+        action_id: RUN_REMINDER_ACTION,
+        text: { type: "plain_text", text: "Run now" },
+        value: row.code,
+      },
+      {
+        type: "button",
+        action_id: REMOVE_REMINDER_ACTION,
+        style: "danger",
+        text: { type: "plain_text", text: "Remove" },
+        value: row.code,
+      },
+    ],
+  },
+];
+
+/**
  * Rows carry their own code, because a click tells us nothing but the button's
  * value. An empty channel still gets the button — it is the only way to create
  * a reminder that isn't built from an existing message.
@@ -108,21 +148,27 @@ export interface ReminderRow {
 export function reminderListBlocks(rows: readonly ReminderRow[]): KnownBlock[] {
   const heading =
     rows.length === 0 ? "No reminders in this channel yet." : "*Reminders in this channel*";
+  const shown = rows.slice(0, MAX_BUTTON_ROWS);
+  const hidden = rows.slice(MAX_BUTTON_ROWS);
 
   return [
     { type: "section", text: { type: "mrkdwn", text: heading } },
-    ...rows.map(
-      (row): KnownBlock => ({
-        type: "section",
-        text: { type: "mrkdwn", text: `\`${row.at}\`  \`${row.code}\`  ${row.recurrence}` },
-        accessory: {
-          type: "button",
-          action_id: EDIT_REMINDER_ACTION,
-          text: { type: "plain_text", text: "Edit" },
-          value: row.code,
-        },
-      }),
-    ),
+    ...shown.flatMap(rowBlocks),
+    ...(hidden.length > 0
+      ? [
+          {
+            type: "context" as const,
+            elements: [
+              {
+                type: "mrkdwn" as const,
+                text: `${hidden.length} more, without buttons: ${hidden
+                  .map((row) => `\`${row.code}\``)
+                  .join(", ")}`,
+              },
+            ],
+          },
+        ]
+      : []),
     {
       type: "actions",
       elements: [

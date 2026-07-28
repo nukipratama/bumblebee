@@ -140,9 +140,9 @@ text.)
 `/bee-remind` acts on the channel you run it in.
 
 ```
-/bee-remind list                    every reminder here, with Edit on each
-                                    and + New reminder at the bottom
-/bee-remind show <code> · remove <code> · run <code>
+/bee-remind list                    every reminder here, each with Edit,
+                                    Run now and Remove, plus + New reminder
+/bee-remind show <code>
 
 /bee-remind host set standup @alice @bob @cara · host clear <code>
 /bee-remind host skip <code> · host next <code> @who
@@ -162,7 +162,9 @@ cadence are pickers, so there are no flags to remember and no quoting rules to g
 - **The message posts exactly as stored**, apart from the host line a rotation appends. An `@name`
   typed into the form is plain text; to mention someone for real, write the message in Slack and use
   **Make this a reminder**, which keeps the mention intact.
-- **`run`** posts immediately but still respects holidays and cadence, so it rehearses the real thing.
+- **Run now** posts immediately but still respects holidays and cadence, so it rehearses the real
+  thing. Unlike the form's **Create**/**Save**, the row buttons still ask for Approve first — a
+  click is too easy to hit by accident, and **Remove** cannot be undone.
 - **Holidays are global** — a date added in any channel skips reminders in every channel.
   `holiday list` shows who added each one and where.
 
@@ -258,7 +260,7 @@ src/
         └── remind/             /bee-remind, split by subcommand family
             ├── index.ts        register + subcommand dispatch + Approve/Reject
             ├── modal.ts        the form's view handler + New/Edit buttons
-            ├── reminders.ts    list · show · remove · run
+            ├── reminders.ts    list · show
             ├── hosts.ts        host set · clear · skip · next
             ├── holidays.ts     holiday add · list · remove
             ├── apply.ts        what each approved confirmation actually does
@@ -377,6 +379,6 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 5. `/bee-remind list` → **+ New reminder** → name `smoke`, a minute from now, message `hello` →
    **Create** → it posts on the minute. Then **Edit** on that row: the form comes up prefilled.
 6. ⋮ → **Make this a reminder** on any message → **Create** → it posts back byte-identical.
-7. `/bee-remind host set smoke @you @someone-else` → Approve → `/bee-remind run smoke` three times: a
+7. `/bee-remind host set smoke @you @someone-else` → Approve → **Run now** on that row three times: a
    different host each time, each a real blue mention, and the third rolls the lap over. Then
-   `/bee-remind remove smoke`.
+   **Remove** → Approve. The list it was clicked from should still be there afterwards.

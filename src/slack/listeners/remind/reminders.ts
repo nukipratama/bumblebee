@@ -1,4 +1,3 @@
-import type { Reminder } from "../../../domain/types.js";
 import {
   lastHostedOn,
   listHolidayDates,
@@ -7,7 +6,6 @@ import {
 } from "../../../store/reminders.js";
 import type { Args } from "../../args.js";
 import { reminderListBlocks } from "../../blocks.js";
-import type { PendingAction } from "../../pending.js";
 import {
   formatNextFire,
   formatRecurrence,
@@ -17,21 +15,6 @@ import {
   mention,
 } from "../../text.js";
 import { readCode, requireReminder, unwrap, type CommandContext } from "./context.js";
-
-export async function handleForExisting(
-  ctx: CommandContext,
-  args: Args,
-  build: (reminder: Reminder) => { summary: string; action: PendingAction },
-): Promise<void> {
-  const code = await unwrap(ctx, readCode(args));
-  if (code === undefined) return;
-
-  const existing = await unwrap(ctx, requireReminder(ctx.channelId, code));
-  if (existing === undefined) return;
-
-  const { summary, action } = build(existing);
-  await ctx.ask(summary, action);
-}
 
 export async function handleList(ctx: CommandContext): Promise<void> {
   const rows = listReminders(ctx.channelId).map((reminder) => ({
