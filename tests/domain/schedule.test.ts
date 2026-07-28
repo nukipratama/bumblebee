@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cadenceOk, matches, nextFire } from "./schedule.js";
-import type { Reminder } from "./types.js";
+import { cadenceOk, matches, nextFire } from "../../src/domain/schedule.js";
+import type { Reminder } from "../../src/domain/types.js";
 
 const MONDAY = "2026-07-27T09:00:00";
 const never = () => false;

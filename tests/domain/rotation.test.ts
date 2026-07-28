@@ -9,8 +9,8 @@ import {
   pendingLap,
   planLap,
   shuffle,
-} from "./rotation.js";
-import type { Host } from "./types.js";
+} from "../../src/domain/rotation.js";
+import type { Host } from "../../src/domain/types.js";
 
 const ROSTER = ["alice", "bob", "cara"];
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { put, takeIfFreshAndOwnedBy, type PendingAction } from "./pending.js";
+import { put, takeIfFreshAndOwnedBy, type PendingAction } from "../../src/slack/pending.js";
 
 const ACTION: PendingAction = { kind: "remove", code: "standup" };
 const START = 1_000_000;

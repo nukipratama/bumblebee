@@ -61,6 +61,10 @@ src/
             ├── apply.ts        # applyAction — what each approved confirmation does
             ├── context.ts      # CommandContext, unwrap, requireReminder, readCode
             └── help.ts         # HELP_TEXT
+
+tests/                          # mirrors the src/ path of what it covers
+├── domain/                     # clock · code · rotation · schedule
+└── slack/                      # args · blocks · pending
 ```
 
 - **New rule or calculation** → `domain/`, with a unit test; call it from the listener. Anything a
@@ -95,9 +99,13 @@ src/
   imports** (e.g. `import { config } from "./config.js"`) — required by NodeNext resolution.
 - **Node 24 LTS** (pinned in `.nvmrc`, `Dockerfile`, `engines`).
 - Quality gate is `npm run typecheck` + `npm test` + `npm run build`.
+- **Tests live in `tests/`**, mirroring the `src/` path of what they cover —
+  `tests/domain/clock.test.ts` covers `src/domain/clock.ts`. Only pure modules have tests; a module
+  with no test file is on the I/O boundary.
 - **Tests** use `node:test` run through `tsx` (`npm test`), because Node's own type stripping won't
-  resolve the `.js` specifiers this codebase uses. `tsconfig.json` typechecks tests;
-  `tsconfig.build.json` excludes them so they never reach `dist/`.
+  resolve the `.js` specifiers this codebase uses. `tsconfig.json` includes `src/` + `tests/` and
+  carries no `rootDir`; `tsconfig.build.json` adds `rootDir: "src"` and includes `src/` alone, which
+  is what keeps `dist/index.js` at the path the Dockerfile's `CMD` expects.
 - Tests are pinned to `TZ=Asia/Jakarta` — the scheduler reads the *local* clock, so untimed tests
   would pass or fail depending on the machine.
 - **Prefer a name over a comment.** Extract a named constant or helper

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { daysBetween, localParts } from "./clock.js";
+import { daysBetween, localParts } from "../../src/domain/clock.js";
 
 describe("localParts", () => {
   it("reads the Jakarta wall clock across a UTC day boundary", () => {

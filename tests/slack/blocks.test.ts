@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fallbackText, reminderBlocks, SKIP_ACTION, type ReminderPost } from "./blocks.js";
+import { fallbackText, reminderBlocks, SKIP_ACTION, type ReminderPost } from "../../src/slack/blocks.js";
 
 function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
   return {

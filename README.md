@@ -257,6 +257,17 @@ src/
             └── help.ts         /bee-remind help
 ```
 
+Tests live in `tests/`, mirroring the layout of what they cover:
+
+```
+tests/
+├── domain/                     clock · code · rotation · schedule
+└── slack/                      args · blocks · pending
+```
+
+Everything with a test is pure, which is the point of the layering: `domain/` and the pure parts of
+`slack/` are covered, while `store/`, `app/` and the listeners are the I/O boundary.
+
 Rules that keep the layering honest:
 
 - **`domain/` imports nothing but `domain/`.** That's what makes it testable without a database or a
@@ -293,6 +304,9 @@ npm run build      # emits dist/, excluding tests
 
 - **TypeScript, strict, ESM.** Relative imports carry a `.js` extension — required by NodeNext
   resolution.
+- **Tests live in `tests/`**, mirroring the `src/` path of whatever they cover — `tests/domain/clock.test.ts`
+  tests `src/domain/clock.ts`. `tsconfig.json` typechecks them; `tsconfig.build.json` builds `src/`
+  alone, so they never reach `dist/`.
 - **Tests run through `tsx`** because Node's own type stripping won't resolve those `.js` specifiers.
   They're pinned to `TZ=Asia/Jakarta`: the scheduler reads the *local* clock, so an untimed test would
   pass or fail depending on the machine.

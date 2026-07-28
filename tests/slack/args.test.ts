@@ -11,7 +11,7 @@ import {
   parseUserMentions,
   unescapeNewlines,
   type FlagSpec,
-} from "./args.js";
+} from "../../src/slack/args.js";
 
 const SPEC: FlagSpec = {
   withValue: ["at", "on", "message"],
