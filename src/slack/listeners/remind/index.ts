@@ -1,7 +1,5 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
-import type { KnownBlock, WebClient } from "@slack/web-api";
-import type { Reminder } from "../../../domain/types.js";
-import { getReminder } from "../../../store/reminders.js";
+import type { WebClient } from "@slack/web-api";
 import {
   APPROVE_ACTION,
   REJECT_ACTION,
@@ -10,15 +8,16 @@ import {
   confirmBlocks,
 } from "../../blocks.js";
 import { parseArgs, type FlagSpec } from "../../args.js";
-import { put, takeIfFreshAndOwnedBy, type PendingAction } from "../../pending.js";
+import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
 import { formatSchedule } from "../../text.js";
 import { applyAction } from "./apply.js";
 import { unwrap, type CommandContext } from "./context.js";
 import { HELP_TEXT } from "./help.js";
 import { handleHoliday } from "./holidays.js";
-import { handleHost } from "./hosts.js";
 import { registerReminderForm } from "./modal.js";
+import { askFromRow } from "./prompt.js";
 import { handleList, handleShow } from "./reminders.js";
+import { registerRotationActions } from "./rotation.js";
 
 /** The schedule lives on the form now; what is left takes a code and nothing else. */
 const FLAG_SPEC: FlagSpec = { withValue: [], boolean: [] };
@@ -37,10 +36,6 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     await handleHoliday(ctx, rest);
     return;
   }
-  if (subcommand === "host") {
-    await handleHost(ctx, rest);
-    return;
-  }
   if (subcommand === "list") {
     await handleList(ctx);
     return;
@@ -54,39 +49,6 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
   await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
-}
-
-interface RowActionArgs {
-  body: BlockAction<ButtonAction>;
-  respond: (message: { text: string; blocks?: KnownBlock[] }) => Promise<unknown>;
-  logger: Logger;
-}
-
-/**
- * A row button composes the same request the command used to. The prompt is a
- * new ephemeral rather than a replacement, so the list it was clicked from
- * survives the confirmation.
- */
-async function askFromRow(
-  { body, respond, logger }: RowActionArgs,
-  build: (reminder: Reminder) => { summary: string; action: PendingAction },
-): Promise<void> {
-  try {
-    const channelId = body.channel!.id;
-    const code = body.actions[0]!.value!;
-
-    const reminder = getReminder(channelId, code);
-    if (!reminder) {
-      await respond({ text: `\`${code}\` no longer exists — nothing to do.` });
-      return;
-    }
-
-    const { summary, action } = build(reminder);
-    const pendingId = put({ action, userId: body.user.id, channelId });
-    await respond({ text: summary, blocks: confirmBlocks(summary, pendingId) });
-  } catch (error) {
-    logger.error("row action failed", error);
-  }
 }
 
 interface ConfirmationArgs {
@@ -134,6 +96,7 @@ async function resolveConfirmation({
 
 export function registerRemind(app: App): void {
   registerReminderForm(app);
+  registerRotationActions(app);
 
   app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
     await ack();
@@ -169,7 +132,7 @@ export function registerRemind(app: App): void {
     RUN_REMINDER_ACTION,
     async ({ ack, body, respond, logger }) => {
       await ack();
-      await askFromRow({ body, respond, logger }, (reminder) => ({
+      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => ({
         summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
         action: { kind: "run", code: reminder.code },
       }));
@@ -180,7 +143,7 @@ export function registerRemind(app: App): void {
     REMOVE_REMINDER_ACTION,
     async ({ ack, body, respond, logger }) => {
       await ack();
-      await askFromRow({ body, respond, logger }, (reminder) => ({
+      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => ({
         summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,
         action: { kind: "remove", code: reminder.code },
       }));

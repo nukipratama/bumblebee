@@ -23,7 +23,7 @@ anyone can manage from Slack itself, with no redeploy.
 | **AI replies** | `@Bumblebee what's 2+2?` | Answers via Azure OpenAI. Thread-aware — ask a follow-up in the same thread and it keeps context. |
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
 | **Reminder commands** | `/bee-remind …` | Add, edit, list, show, remove and test-fire reminders per channel. |
-| **Host rotation** | `/bee-remind host set standup @a @b` | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
+| **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Skip today** | The button on a rotating reminder | The host hands over to the next person, or anyone marks themselves out for the day. |
 | **Holidays** | `/bee-remind holiday add 2026-08-17` | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
@@ -78,12 +78,14 @@ At [api.slack.com/apps](https://api.slack.com/apps):
    a channel the bot has joined.
 
 > [!IMPORTANT]
-> Three settings **fail silently** when missed — nothing errors, the feature just does nothing:
+> Two settings **fail silently** when missed — nothing errors, the feature just does nothing:
 >
-> - **Interactivity off** → every button (Approve/Reject, `Skip today`) renders and does nothing.
-> - **"Escape channels, users, and links" unticked** on `/bee-remind` → `@nuki` arrives as literal
->   text, so mentions never render and `host set` can't read a roster at all.
+> - **Interactivity off** → every button and dialog (Approve/Reject, `Skip today`, `Edit`,
+>   `+ New reminder`) renders and does nothing.
 > - **Callback ID ≠ `remind_from_message`** → the shortcut appears in the ⋮ menu and does nothing.
+>
+> "Escape channels, users, and links" no longer matters: no command takes a person's name any more —
+> rosters are picked in a dialog, which returns real user IDs either way.
 
 <details>
 <summary>App display settings (optional, for flavor)</summary>
@@ -144,9 +146,6 @@ text.)
                                     Run now and Remove, plus + New reminder
 /bee-remind show <code>
 
-/bee-remind host set standup @alice @bob @cara · host clear <code>
-/bee-remind host skip <code> · host next <code> @who
-
 /bee-remind holiday add 2026-08-17 · holiday list · holiday remove 2026-08-17
 /bee-remind help
 ```
@@ -178,18 +177,16 @@ cadence are pickers, so there are no flags to remember and no quoting rules to g
 
 Give a reminder a roster and each post names a different host.
 
-```
-/bee-remind host set standup @alice @bob @cara
-```
+Pick the roster in the **Host rotation** field on the form — **+ New reminder** or **Edit**. Leaving
+it empty means no rotation, and emptying it later clears one.
 
 - **The order is shuffled, and nobody hosts twice until everyone has had a turn.** Each pass is a
   *lap*: the order is drawn when the lap starts and visible from then on, so `show <code>` tells you
   when your turn is coming.
-- **`host skip`** moves whoever is up to the back of the lap — they keep their turn, they just aren't
-  up today. **`host next @who`** puts someone up next.
-- **`host set` replaces the whole list.** Anyone who already hosted this lap stays hosted, whoever was
-  up stays up, and a new name joins the current lap. The confirmation shows a diff, so a name you
-  dropped by accident is visible.
+- **`show <code>` carries the lap controls.** **Skip host** moves whoever is up to the back of the
+  lap — they keep their turn, they just aren't up today. The picker beside it puts someone up next.
+- **Saving the form replaces the whole roster.** Anyone who already hosted this lap stays hosted,
+  whoever was up stays up, and a new name joins the current lap.
 - **`run` uses a turn**, exactly as a real fire does. A post that fails does not.
 - `show <code>` prints the whole roster: ✓ for those who have hosted this lap (with the date), → for
   whoever is up, and the rest below.
@@ -261,7 +258,8 @@ src/
             ├── index.ts        register + subcommand dispatch + Approve/Reject
             ├── modal.ts        the form's view handler + New/Edit buttons
             ├── reminders.ts    list · show
-            ├── hosts.ts        host set · clear · skip · next
+            ├── rotation.ts     Skip host · put someone up next
+            ├── prompt.ts       raise a confirmation from a button
             ├── holidays.ts     holiday add · list · remove
             ├── apply.ts        what each approved confirmation actually does
             ├── context.ts      the command context shared by the handlers
@@ -363,7 +361,6 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 | Symptom | Cause |
 | --- | --- |
 | Buttons render but nothing happens | **Interactivity** is off in the Slack app config. |
-| `@nuki` shows as plain text; `host set` rejects everyone | **"Escape channels, users, and links"** is unticked on the `/bee-remind` slash command. |
 | The ⋮ menu item exists but does nothing | The shortcut's callback ID isn't exactly `remind_from_message`. |
 | Reminders fire an hour or more off | `TZ` isn't `Asia/Jakarta`. Boot logs a `TZ misconfigured` error; check `tzdata` is in the image. |
 | Every reminder posts twice | Two Socket Mode connections on one app token — usually `npm run dev` running against the live container. |
@@ -379,6 +376,6 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 5. `/bee-remind list` → **+ New reminder** → name `smoke`, a minute from now, message `hello` →
    **Create** → it posts on the minute. Then **Edit** on that row: the form comes up prefilled.
 6. ⋮ → **Make this a reminder** on any message → **Create** → it posts back byte-identical.
-7. `/bee-remind host set smoke @you @someone-else` → Approve → **Run now** on that row three times: a
+7. **Edit** `smoke`, add yourself and someone else to **Host rotation**, **Save** → **Run now** on that row three times: a
    different host each time, each a real blue mention, and the third rolls the lap over. Then
    **Remove** → Approve. The list it was clicked from should still be there afterwards.

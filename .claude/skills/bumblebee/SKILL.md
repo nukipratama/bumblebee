@@ -58,7 +58,8 @@ src/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
             ├── modal.ts        # the form's view handler + the New/Edit buttons
             ├── reminders.ts    # list · show
-            ├── hosts.ts        # host set · clear · skip · next
+            ├── rotation.ts     # Skip host · put someone up next
+            ├── prompt.ts       # askFromRow — raise a confirmation from a button
             ├── holidays.ts     # holiday add · list · remove
             ├── apply.ts        # applyAction — what each approved confirmation does
             ├── context.ts      # CommandContext, unwrap, requireReminder, readCode
@@ -124,12 +125,16 @@ tests/                          # mirrors the src/ path of what it covers
 - Thread context comes from `client.conversations.replies` (needs `channels:history` +
   `groups:history` scopes); a top-level mention is single-turn.
 - Bot scopes live in the Slack app config; the README's "Slack app setup" is the source of truth.
-- Three app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
-  on or every button does nothing; *"Escape channels, users, and links"* must be ticked on
-  `/bee-remind` or `@someone` arrives as literal text with no user ID; and the message shortcut's
-  callback ID must be exactly `remind_from_message` or the menu item appears and does nothing.
-- Slash-command replies use `respond()` (ephemeral) with hand-rolled mrkdwn. Events and actions have no
-  `respond()` — use `client.chat.postEphemeral` there.
+- Two app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
+  on or every button and dialog does nothing; and the message shortcut's callback ID must be exactly
+  `remind_from_message` or the menu item appears and does nothing. *"Escape channels, users, and
+  links"* used to be a third, but no command takes a person's name any more.
+- Slash-command replies use `respond()`, and so do **actions on an ephemeral reply** — a button in a
+  `/bee-remind` reply carries a `response_url`, which is what lets `askFromRow` and the Approve/Reject
+  handlers reply at all. Actions on a *posted* message (the `Skip today` button) have no `response_url`
+  — that path uses `client.chat.update` / `postEphemeral`.
+- **Confirm from a button with a fresh ephemeral, never `replace_original`**, or the list the button
+  was clicked from is destroyed by its own confirmation.
 - **A form's submit is its confirmation.** `add`/`edit` no longer exist as commands: creating and
   editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
   Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.

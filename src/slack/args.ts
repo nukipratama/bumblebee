@@ -13,7 +13,6 @@ export interface Args {
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const USER_MENTION = /^<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>$/;
 
 const flagList = (names: Iterable<string>): string =>
   [...names].map((name) => "`--" + name + "`").join(", ");
@@ -111,24 +110,4 @@ export function parseDate(value: string): Parsed<string> {
   }
 
   return ok(value);
-}
-
-export function parseUserMentions(tokens: readonly string[]): Parsed<string[]> {
-  if (tokens.length === 0) return fail("list at least one person, like `@alice @bob`");
-
-  const userIds: string[] = [];
-  for (const token of tokens) {
-    const match = USER_MENTION.exec(token);
-    if (!match) {
-      return fail(
-        `\`${token}\` is not a person — type \`@name\` and pick them from the autocomplete. ` +
-          'If `@name` still lands here as plain text, tick "Escape channels, users, and links" ' +
-          "on the `/bee-remind` slash command.",
-      );
-    }
-    if (userIds.includes(match[1]!)) return fail(`<@${match[1]}> is listed twice`);
-    userIds.push(match[1]!);
-  }
-
-  return ok(userIds);
 }

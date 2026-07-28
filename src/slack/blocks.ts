@@ -8,6 +8,8 @@ export const NEW_REMINDER_ACTION = "remind_new";
 export const EDIT_REMINDER_ACTION = "remind_edit";
 export const RUN_REMINDER_ACTION = "remind_run";
 export const REMOVE_REMINDER_ACTION = "remind_remove";
+export const HOST_SKIP_ACTION = "remind_host_skip";
+export const HOST_NEXT_ACTION = "remind_host_next";
 
 export interface ReminderPost {
   body: string;
@@ -181,4 +183,38 @@ export function reminderListBlocks(rows: readonly ReminderRow[]): KnownBlock[] {
       ],
     },
   ];
+}
+
+export interface ReminderDetail {
+  code: string;
+  body: string;
+  /** Absent when the reminder has no roster, which is also when the lap controls make no sense. */
+  rotation?: string;
+}
+
+export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
+  const blocks: KnownBlock[] = [{ type: "section", text: { type: "mrkdwn", text: detail.body } }];
+  if (!detail.rotation) return blocks;
+
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: detail.rotation } });
+  blocks.push({
+    type: "actions",
+    // A users_select has no value of its own, so the code rides on the block.
+    block_id: detail.code,
+    elements: [
+      {
+        type: "button",
+        action_id: HOST_SKIP_ACTION,
+        text: { type: "plain_text", text: "Skip host" },
+        value: detail.code,
+      },
+      {
+        type: "users_select",
+        action_id: HOST_NEXT_ACTION,
+        placeholder: { type: "plain_text", text: "Put someone up next" },
+      },
+    ],
+  });
+
+  return blocks;
 }

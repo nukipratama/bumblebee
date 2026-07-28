@@ -5,7 +5,7 @@ import {
   listReminders,
 } from "../../../store/reminders.js";
 import type { Args } from "../../args.js";
-import { reminderListBlocks } from "../../blocks.js";
+import { reminderDetailBlocks, reminderListBlocks } from "../../blocks.js";
 import {
   formatNextFire,
   formatRecurrence,
@@ -34,18 +34,19 @@ export async function handleShow(ctx: CommandContext, args: Args): Promise<void>
   if (reminder === undefined) return;
 
   const rotation = formatRotation(listHosts(reminder.id), lastHostedOn(reminder.id));
+  const body = [
+    `*\`${reminder.code}\`*`,
+    `*schedule*  ${formatSchedule(reminder)}`,
+    `*created*  ${mention(reminder.createdBy)} on ${formatTimestamp(reminder.createdAt)}`,
+    `*last fired*  ${formatTimestamp(reminder.lastFiredAt)}`,
+    `*next fire*  ${formatNextFire(reminder, listHolidayDates())}`,
+    "",
+    "*message*",
+    reminder.message,
+  ].join("\n");
 
   await ctx.respond(
-    [
-      `*\`${reminder.code}\`*`,
-      `*schedule*  ${formatSchedule(reminder)}`,
-      `*created*  ${mention(reminder.createdBy)} on ${formatTimestamp(reminder.createdAt)}`,
-      `*last fired*  ${formatTimestamp(reminder.lastFiredAt)}`,
-      `*next fire*  ${formatNextFire(reminder, listHolidayDates())}`,
-      "",
-      "*message*",
-      reminder.message,
-      ...(rotation ? ["", rotation] : []),
-    ].join("\n"),
+    `${reminder.code} — ${formatSchedule(reminder)}`,
+    reminderDetailBlocks({ code: reminder.code, body, rotation }),
   );
 }

@@ -55,19 +55,3 @@ export function formatRotation(
 
   return ["*rotation*", ...hosted, ...pending].join("\n");
 }
-
-/** A diff, not the resulting list — a dropped name is invisible in a list of who remains. */
-export function formatRosterDiff(roster: readonly Host[], userIds: readonly string[]): string[] {
-  const existingIds = new Set(roster.map((member) => member.userId));
-  const added = userIds.filter((id) => !existingIds.has(id));
-  const removed = roster.filter((member) => !userIds.includes(member.userId));
-  const unchanged = userIds.filter((id) => existingIds.has(id));
-
-  const note = (member: Host): string => (hasHosted(member) ? " (already hosted this lap)" : "");
-
-  return [
-    ...added.map((id) => `+ ${mention(id)}`),
-    ...removed.map((member) => `− ${mention(member.userId)}${note(member)}`),
-    ...(unchanged.length > 0 ? [`unchanged: ${mentionList(unchanged)}`] : []),
-  ];
-}
