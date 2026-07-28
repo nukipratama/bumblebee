@@ -9,7 +9,6 @@ const { initDb, stmt } = await import("../../src/store/database.js");
 const {
   addSkip,
   clearHosts,
-  countReminders,
   deleteHoliday,
   deleteReminder,
   getFireByMessageTs,
@@ -19,7 +18,7 @@ const {
   insertHoliday,
   insertReminder,
   lastHostedOn,
-  listEnabledReminders,
+  listAllReminders,
   listHolidayDates,
   listHolidays,
   listHosts,
@@ -29,7 +28,6 @@ const {
   replaceHosts,
   setFireHost,
   setLap,
-  setReminderEnabled,
   setReminderMessage,
 } = await import("../../src/store/reminders.js");
 
@@ -50,7 +48,7 @@ function seed(overrides = {}): number {
 }
 
 describe("reminders", () => {
-  it("round-trips every column, with enabled as a boolean", () => {
+  it("round-trips every column", () => {
     insertReminder(newReminder({ bodyFormat: "mrkdwn", days: "monday", everyNWeeks: 2 }));
 
     const stored = getReminder("C1", "standup")!;
@@ -58,7 +56,6 @@ describe("reminders", () => {
     assert.equal(stored.bodyFormat, "mrkdwn");
     assert.equal(stored.days, "monday");
     assert.equal(stored.everyNWeeks, 2);
-    assert.equal(stored.enabled, true);
     assert.equal(stored.lastFiredAt, null);
   });
 
@@ -76,16 +73,14 @@ describe("reminders", () => {
     assert.equal(getReminderById(id + 999), undefined);
   });
 
-  it("leaves paused reminders out of the scheduler's list", () => {
-    seed({ code: "active" });
-    seed({ code: "paused" });
-    setReminderEnabled("C1", "paused", false);
+  it("gives the scheduler every channel's reminders, not just one", () => {
+    seed({ channelId: "C1", code: "standup" });
+    seed({ channelId: "C2", code: "retro" });
 
     assert.deepEqual(
-      listEnabledReminders().map((reminder) => reminder.code),
-      ["active"],
+      listAllReminders().map((reminder) => reminder.code),
+      ["standup", "retro"],
     );
-    assert.deepEqual(plain(countReminders("C1")), { enabled: 1, paused: 1 });
   });
 
   it("resets body_format when the message is edited, since `edit` supplies Markdown", () => {

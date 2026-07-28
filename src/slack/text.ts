@@ -29,7 +29,6 @@ export function formatTimestamp(iso: string | null): string {
 }
 
 export function formatNextFire(reminder: Reminder, holidays: ReadonlySet<string>): string {
-  if (!reminder.enabled) return "paused";
   const next = nextFire(reminder, new Date(), (date) => holidays.has(date));
   return next ? formatTimestamp(next.toISOString()) : "nothing in the next 4 weeks";
 }

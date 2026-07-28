@@ -105,16 +105,6 @@ describe("remove and pause", () => {
     assert.match(result.ephemeral, /nothing removed/);
   });
 
-  it("pauses and resumes", async () => {
-    seed();
-
-    await apply({ kind: "setEnabled", code: "standup", enabled: false });
-    assert.equal(getReminder("C1", "standup")?.enabled, false);
-
-    const resumed = await apply({ kind: "setEnabled", code: "standup", enabled: true });
-    assert.equal(getReminder("C1", "standup")?.enabled, true);
-    assert.match(resumed.channel ?? "", /resumed reminder/);
-  });
 });
 
 describe("host rotation", () => {

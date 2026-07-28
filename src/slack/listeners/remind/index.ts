@@ -55,16 +55,6 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
       return handleEdit(ctx, args);
     case "show":
       return handleShow(ctx, args);
-    case "pause":
-      return handleForExisting(ctx, args, (reminder) => ({
-        summary: `Pause \`${reminder.code}\`? It stops firing until you resume it.`,
-        action: { kind: "setEnabled", code: reminder.code, enabled: false },
-      }));
-    case "resume":
-      return handleForExisting(ctx, args, (reminder) => ({
-        summary: `Resume \`${reminder.code}\`? It fires again at ${formatSchedule(reminder)}.`,
-        action: { kind: "setEnabled", code: reminder.code, enabled: true },
-      }));
     case "remove":
       return handleForExisting(ctx, args, (reminder) => ({
         summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,

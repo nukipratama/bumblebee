@@ -14,7 +14,6 @@ export interface Reminder {
   message: string;
   bodyFormat: BodyFormat;
   everyNWeeks: number;
-  enabled: boolean;
   lastFiredAt: string | null;
   createdBy: string;
   createdAt: string;

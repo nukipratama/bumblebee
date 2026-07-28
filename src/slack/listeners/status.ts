@@ -3,7 +3,7 @@ import { getLastTickAt } from "../../app/scheduler.js";
 import { localParts } from "../../domain/clock.js";
 import { nextFire } from "../../domain/schedule.js";
 import { getAiUsageSummary } from "../../store/ai-usage.js";
-import { countReminders, listHolidayDates, listReminders } from "../../store/reminders.js";
+import { listHolidayDates, listReminders } from "../../store/reminders.js";
 
 const STATUS_LINE = "🐝 Bumblebee is online and reporting for duty. Roll out! ⚡️";
 
@@ -21,18 +21,17 @@ function formatUsage(): string {
 }
 
 function formatReminders(channelId: string): string {
-  const { enabled, paused } = countReminders(channelId);
-  if (enabled + paused === 0) return "*Reminders:* none in this channel yet.";
+  const reminders = listReminders(channelId);
+  if (reminders.length === 0) return "*Reminders:* none in this channel yet.";
 
   const holidays = listHolidayDates();
   const now = new Date();
-  const upcoming = listReminders(channelId)
-    .filter((reminder) => reminder.enabled)
+  const upcoming = reminders
     .map((reminder) => ({ reminder, next: nextFire(reminder, now, (date) => holidays.has(date)) }))
     .filter((candidate) => candidate.next !== null)
     .sort((a, b) => a.next!.getTime() - b.next!.getTime())[0];
 
-  const lines = ["*Reminders (this channel)*", `• ${enabled} enabled, ${paused} paused`];
+  const lines = ["*Reminders (this channel)*", `• ${reminders.length} in this channel`];
 
   if (upcoming) {
     const { date, time } = localParts(upcoming.next!);

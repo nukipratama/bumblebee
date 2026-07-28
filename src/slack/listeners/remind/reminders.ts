@@ -164,10 +164,9 @@ export async function handleList(ctx: CommandContext): Promise<void> {
     return;
   }
 
-  const lines = reminders.map((reminder) => {
-    const paused = reminder.enabled ? "" : "  ⏸ paused";
-    return `\`${reminder.at}\`  \`${reminder.code}\`  ${formatRecurrence(reminder)}${paused}`;
-  });
+  const lines = reminders.map(
+    (reminder) => `\`${reminder.at}\`  \`${reminder.code}\`  ${formatRecurrence(reminder)}`,
+  );
 
   await ctx.respond(["*Reminders in this channel*", ...lines].join("\n"));
 }
@@ -185,7 +184,6 @@ export async function handleShow(ctx: CommandContext, args: Args): Promise<void>
     [
       `*\`${reminder.code}\`*`,
       `*schedule*  ${formatSchedule(reminder)}`,
-      `*state*  ${reminder.enabled ? "active" : "paused"}`,
       `*created*  ${mention(reminder.createdBy)} on ${formatTimestamp(reminder.createdAt)}`,
       `*last fired*  ${formatTimestamp(reminder.lastFiredAt)}`,
       `*next fire*  ${formatNextFire(reminder, listHolidayDates())}`,

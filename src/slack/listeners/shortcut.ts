@@ -45,7 +45,7 @@ function modalBlocks(suggestedCode: string): KnownBlock[] {
       type: "input",
       block_id: "code",
       label: { type: "plain_text", text: "Name" },
-      hint: { type: "plain_text", text: "How you'll refer to it: /bee-remind pause <name>" },
+      hint: { type: "plain_text", text: "How you'll refer to it: /bee-remind show <name>" },
       element: {
         type: "plain_text_input",
         action_id: "value",

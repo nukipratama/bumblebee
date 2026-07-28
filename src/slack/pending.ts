@@ -7,7 +7,6 @@ export type PendingAction =
   | { kind: "add"; reminder: NewReminder }
   | { kind: "edit"; code: string; changes: ReminderChanges }
   | { kind: "remove"; code: string }
-  | { kind: "setEnabled"; code: string; enabled: boolean }
   | { kind: "run"; code: string }
   | { kind: "holidayAdd"; date: string }
   | { kind: "holidayRemove"; date: string }

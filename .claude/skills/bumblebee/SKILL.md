@@ -55,7 +55,7 @@ src/
         ├── skip.ts             # Skip today button — host handover + out-today list
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
-            ├── reminders.ts    # add · edit · list · show · pause · resume · remove · run
+            ├── reminders.ts    # add · edit · list · show · remove · run
             ├── hosts.ts        # host set · clear · skip · next
             ├── holidays.ts     # holiday add · list · remove
             ├── apply.ts        # applyAction — what each approved confirmation does
@@ -80,7 +80,7 @@ tests/                          # mirrors the src/ path of what it covers
 ## Data rules
 
 - **Schema changes** → *append* a `CREATE TABLE`/`ALTER TABLE` string to the `migrations` array in
-  `store/database.ts`. Index = version; never edit an existing entry. Currently 8 entries.
+  `store/database.ts`. Index = version; never edit an existing entry. Currently 9 entries.
 - **DB access** → always via the memoized `stmt()` helper in `store/database.ts`. Never `db.prepare`
   at module top level: the tables don't exist until `initDb()` runs.
 - **Host rotation state is one column**: `reminder_hosts.lap_order` is a number while that person is

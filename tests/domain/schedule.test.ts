@@ -17,7 +17,6 @@ function reminder(overrides: Partial<Reminder> = {}): Reminder {
     message: "Standup time",
     bodyFormat: "markdown",
     everyNWeeks: 1,
-    enabled: true,
     lastFiredAt: null,
     createdBy: "U1",
     createdAt: "2026-07-01T00:00:00.000Z",
