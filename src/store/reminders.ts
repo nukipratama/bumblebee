@@ -229,7 +229,8 @@ export function getFireByMessageTs(messageTs: string): Fire | undefined {
   ) as unknown as Fire | undefined;
 }
 
-export function setFireHost(fireId: number, hostUserId: string): void {
+/** Null when a handover found nobody available, which the post reports. */
+export function setFireHost(fireId: number, hostUserId: string | null): void {
   stmt("UPDATE reminder_fires SET host_user_id = ? WHERE id = ?").run(hostUserId, fireId);
 }
 

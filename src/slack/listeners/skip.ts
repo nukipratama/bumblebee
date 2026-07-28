@@ -42,17 +42,27 @@ function handOver(fire: Fire, reminder: Reminder, clicker: string): SkipOutcome 
 
   // An empty pending lap means this fire closed it, so a fresh one is drawn.
   const next = lap.length > 0 ? lap : drawLapAvoiding(rosterIds, clicker);
-  const replacement = next[0]!;
 
-  // The clicker rejoins at the back, which is what keeps their turn. The filter
-  // matters when the lap was just redrawn and already contains them.
-  const remaining = next.slice(1).filter((userId) => userId !== clicker);
+  // Handing over to someone who already said they're away would name a host who
+  // isn't coming, so they are passed over.
+  const outToday = new Set(listSkips(fire.id));
+  const replacement = next.find((userId) => userId !== clicker && !outToday.has(userId));
 
-  setFireHost(fire.id, replacement);
+  // The clicker rejoins at the back, which is what keeps their turn. Anyone
+  // passed over keeps their place — being out today costs nobody a turn.
+  const remaining = next.filter((userId) => userId !== clicker && userId !== replacement);
   setLap(reminder.id, [...remaining, clicker]);
   // They clicked Skip today, so they are out today as well as not hosting it.
   addSkip(fire.id, clicker);
 
+  if (!replacement) {
+    setFireHost(fire.id, null);
+    return {
+      thread: `⚠️ Everyone left in the rotation is out today, so nobody is hosting — <@${clicker}> keeps their turn.`,
+    };
+  }
+
+  setFireHost(fire.id, replacement);
   return {
     thread: `🔁 <@${replacement}> is hosting today instead — <@${clicker}> keeps their turn.`,
   };
@@ -89,12 +99,17 @@ async function repost(
   // Re-read rather than reuse `fire`: a handover has just changed the host.
   const current = getFireByMessageTs(messageTs) ?? fire;
 
+  const hasRoster = listHosts(reminder.id).length > 0;
+
   const post = {
     body: reminder.message,
     bodyFormat: reminder.bodyFormat,
     host: current.hostUserId ?? undefined,
+    // A rostered reminder always names a host when it fires, so losing one means
+    // a handover found nobody available.
+    hostUnavailable: hasRoster && !current.hostUserId,
     outToday: listSkips(fire.id),
-    skippable: listHosts(reminder.id).length > 0,
+    skippable: hasRoster,
     windowClosed: !handoverOpen(fire, now),
   };
 

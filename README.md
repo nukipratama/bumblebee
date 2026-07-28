@@ -201,6 +201,10 @@ since it's one click saying one thing.
   thread reply says so. **You keep your turn** — you go back into the lap, you just aren't up today.
   After 30 minutes the button reports itself closed: the meeting has effectively happened, and
   rewriting who was responsible would revise history.
+- **Anyone already marked out is passed over**, so a handover never names a host who has said they
+  won't be there. They keep their place in the lap — being out today costs nobody a turn. If everyone
+  left in the lap is out, the post says `⚠️ Nobody available to host today` rather than naming
+  someone who isn't coming.
 - **If you're not the host**, you're added to `🚪 Out today`. No time limit, and it doesn't touch the
   rotation. Anyone in the channel can do this — you don't have to be on the roster to say you'll be
   away.
