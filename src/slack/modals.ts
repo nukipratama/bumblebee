@@ -3,6 +3,7 @@ import type { KnownBlock, View } from "@slack/web-api";
 import { CODE_RULE, isReminderCode } from "../domain/code.js";
 import { DAY_NAMES, EVERY_DAY, WEEKDAYS, daysColumn, daysToSelection, isEveryDay } from "../domain/days.js";
 import { fail, ok, type Parsed } from "../domain/result.js";
+import { sameRoster } from "../domain/rotation.js";
 import { cadenceFitsDays } from "../domain/schedule.js";
 import type { Host, Reminder } from "../domain/types.js";
 
@@ -217,6 +218,41 @@ export function readSubmission(values: Values): FormFields {
     everyNWeeks: Number(field("cadence")?.selected_option?.value ?? 1),
     hosts: field("hosts")?.selected_users ?? [],
   };
+}
+
+/** Only the fields that actually changed. An absent key means: leave it alone. */
+export interface PlannedEdit {
+  at?: string;
+  days?: string;
+  everyNWeeks?: number;
+  message?: string;
+  hosts?: readonly string[];
+}
+
+/**
+ * Writing a field that did not change is not a no-op here — `setReminderMessage`
+ * also resets the body format to Markdown, which would silently reinterpret a
+ * body captured from a Slack message, and re-planning the lap redraws an order
+ * people have already read off `show`. So each write has to be earned.
+ */
+export function plannedEdit(
+  existing: Reminder,
+  roster: readonly Host[],
+  fields: FormFields,
+  at: string,
+  days: string,
+): PlannedEdit {
+  const planned: PlannedEdit = {};
+
+  if (at !== existing.at) planned.at = at;
+  if (days !== existing.days) planned.days = days;
+  if (fields.everyNWeeks !== existing.everyNWeeks) planned.everyNWeeks = fields.everyNWeeks;
+  if (fields.message !== undefined && fields.message !== existing.message) {
+    planned.message = fields.message;
+  }
+  if (!sameRoster(roster, fields.hosts)) planned.hosts = fields.hosts;
+
+  return planned;
 }
 
 /**

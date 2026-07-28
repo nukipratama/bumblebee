@@ -12,6 +12,7 @@ export const HOST_SKIP_ACTION = "remind_host_skip";
 export const HOST_NEXT_ACTION = "remind_host_next";
 
 export interface ReminderPost {
+  code: string;
   body: string;
   bodyFormat: BodyFormat;
   host?: string;
@@ -40,12 +41,14 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   if (post.outToday.length > 0) {
     context.push(`🚪 Out today: ${post.outToday.map(mention).join(", ")}`);
   }
-  if (context.length > 0) {
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: context.join("\n") }],
-    });
-  }
+  // Always last: without it a post gives no way back to the reminder that made
+  // it, and the code is what `show` and every button are keyed by.
+  context.push(`\`${post.code}\``);
+
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: context.join("\n") }],
+  });
 
   if (post.skippable) {
     blocks.push({

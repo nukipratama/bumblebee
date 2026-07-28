@@ -15,6 +15,7 @@ import {
 
 function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
   return {
+    code: "standup",
     body: "Standup time!",
     bodyFormat: "markdown",
     outToday: [],
@@ -32,6 +33,12 @@ function contextText(blocks: ReturnType<typeof reminderBlocks>): string | undefi
   if (!block || block.type !== "context") return undefined;
   const element = block.elements[0];
   return element && "text" in element ? element.text : undefined;
+}
+
+/** The context minus the code, which every post carries — see its own describe below. */
+function hostContext(blocks: ReturnType<typeof reminderBlocks>): string | undefined {
+  const lines = contextText(blocks)?.split("\n").slice(0, -1) ?? [];
+  return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
 describe("reminderBlocks — body dialect", () => {
@@ -55,53 +62,67 @@ describe("reminderBlocks — body dialect", () => {
 });
 
 describe("reminderBlocks — host and out-today", () => {
-  it("omits the context line when there is neither", () => {
-    assert.deepEqual(typeOf(reminderBlocks(post())), ["markdown"]);
+  it("says nothing about hosting when there is neither", () => {
+    assert.equal(hostContext(reminderBlocks(post())), undefined);
   });
 
   it("names the host as a real mention", () => {
-    assert.equal(contextText(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
+    assert.equal(hostContext(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
   });
 
   it("lists one person out", () => {
-    const text = contextText(reminderBlocks(post({ outToday: ["U_BOB"] })));
+    const text = hostContext(reminderBlocks(post({ outToday: ["U_BOB"] })));
     assert.equal(text, "🚪 Out today: <@U_BOB>");
   });
 
   it("lists several people out, in the order given", () => {
-    const text = contextText(reminderBlocks(post({ outToday: ["U_BOB", "U_DANA"] })));
+    const text = hostContext(reminderBlocks(post({ outToday: ["U_BOB", "U_DANA"] })));
     assert.equal(text, "🚪 Out today: <@U_BOB>, <@U_DANA>");
   });
 
   it("puts out-today on its own line, so a long list never crowds the host", () => {
-    const text = contextText(
+    const text = hostContext(
       reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB", "U_DANA"] })),
     );
     assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>, <@U_DANA>");
   });
 
   it("reports that nobody is hosting when a handover found no one available", () => {
-    const text = contextText(
+    const text = hostContext(
       reminderBlocks(post({ hostUnavailable: true, outToday: ["U_BOB", "U_ALICE"] })),
     );
     assert.equal(text, "⚠️ Nobody available to host today\n🚪 Out today: <@U_BOB>, <@U_ALICE>");
   });
 
   it("names the host rather than the warning whenever there is one", () => {
-    const text = contextText(reminderBlocks(post({ host: "U_CARA", hostUnavailable: true })));
+    const text = hostContext(reminderBlocks(post({ host: "U_CARA", hostUnavailable: true })));
     assert.equal(text, "🎙 Host: <@U_CARA>");
   });
 
   it("stays silent about hosting on a reminder that never had a roster", () => {
-    assert.deepEqual(typeOf(reminderBlocks(post({ outToday: [] }))), ["markdown"]);
+    assert.deepEqual(typeOf(reminderBlocks(post({ outToday: [] }))), ["markdown", "context"]);
+    assert.equal(hostContext(reminderBlocks(post({ outToday: [] }))), undefined);
   });
 
   it("leaves no stray blank line when only one of the two is present", () => {
-    assert.equal(contextText(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
+    assert.equal(hostContext(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
     assert.equal(
-      contextText(reminderBlocks(post({ outToday: ["U_BOB"] }))),
+      hostContext(reminderBlocks(post({ outToday: ["U_BOB"] }))),
       "🚪 Out today: <@U_BOB>",
     );
+  });
+});
+
+describe("reminderBlocks — the code", () => {
+  it("names the reminder on every post, so a post leads back to `show <code>`", () => {
+    for (const overrides of [{}, { host: "U_ALICE" }, { outToday: ["U_BOB"] }]) {
+      assert.match(contextText(reminderBlocks(post(overrides))) ?? "", /`standup`$/);
+    }
+  });
+
+  it("puts it last, below whoever is hosting", () => {
+    const text = contextText(reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB"] })));
+    assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>\n`standup`");
   });
 });
 

@@ -138,8 +138,14 @@ tests/                          # mirrors the src/ path of what it covers
 - **A form's submit is its confirmation.** `add`/`edit` no longer exist as commands: creating and
   editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
   Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.
-- **Never call `setReminderMessage` for an unchanged body.** It resets `body_format` to `markdown`,
-  which silently reinterprets a body captured from a Slack message.
+- **Only write a field the form actually changed** — `plannedEdit` in `slack/modals.ts` decides, and
+  the listener just executes it. Two writes are not idempotent: `setReminderMessage` resets
+  `body_format` to `markdown`, silently reinterpreting a body captured from Slack, and `replaceHosts`
+  re-plans the lap, redrawing an order people have already read off `show`.
+- **The Skip today button cannot be dismissed per-person, and that is not a bug.** A fired reminder is
+  one shared channel message, so `chat.update` rewrites it for everyone and Slack has no per-viewer
+  rendering. Removing the button after a click would break its second job: anyone marking themselves
+  out for the day, independently of the host's handover. The `🚪 Out today:` line is the confirmation.
 - Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
   `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.

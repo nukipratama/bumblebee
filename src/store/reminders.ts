@@ -83,7 +83,11 @@ export function setReminderDays(channelId: string, code: string, days: string): 
   stmt("UPDATE reminders SET days = ? WHERE channel_id = ? AND code = ?").run(days, channelId, code);
 }
 
-/** Resets body_format too: `edit --message` always supplies Markdown. */
+/**
+ * Resets body_format too: text typed into the form is Markdown. Call this only
+ * when the message actually changed — see `plannedEdit` — or a body captured
+ * from a Slack message gets silently reinterpreted.
+ */
 export function setReminderMessage(channelId: string, code: string, message: string): void {
   stmt(
     "UPDATE reminders SET message = ?, body_format = 'markdown' WHERE channel_id = ? AND code = ?",
@@ -192,10 +196,6 @@ export function replaceHosts(
       add.run(reminderId, userId, place === -1 ? null : place);
     }
   });
-}
-
-export function clearHosts(reminderId: number): void {
-  stmt("DELETE FROM reminder_hosts WHERE reminder_id = ?").run(reminderId);
 }
 
 export function getFireByMessageTs(messageTs: string): Fire | undefined {

@@ -37,59 +37,7 @@ function seed(overrides: Parameters<typeof newReminder>[0] = {}): Reminder {
 
 const apply = (action: PendingAction) => applyAction(entry(action), fakeClient().client);
 
-describe("add", () => {
-  it("inserts the reminder and announces it in the channel", async () => {
-    const result = await apply({ kind: "add", reminder: newReminder() });
-
-    assert.equal(getReminder("C1", "standup")?.message, "Standup time!");
-    assert.match(result.ephemeral, /Added/);
-    assert.match(result.channel ?? "", /<@U_ACTOR> added reminder `standup`/);
-  });
-
-  it("adds nothing when the code was taken between the prompt and the click", async () => {
-    seed();
-
-    const result = await apply({ kind: "add", reminder: newReminder({ message: "different" }) });
-
-    assert.match(result.ephemeral, /already exists now — nothing added/);
-    assert.equal(result.channel, undefined);
-    assert.equal(getReminder("C1", "standup")?.message, "Standup time!");
-  });
-});
-
-describe("edit", () => {
-  it("applies only the fields that changed", async () => {
-    seed({ at: "09:00", days: "monday" });
-
-    await apply({ kind: "edit", code: "standup", changes: { at: "10:30" } });
-
-    const updated = getReminder("C1", "standup")!;
-    assert.equal(updated.at, "10:30");
-    assert.equal(updated.days, "monday");
-  });
-
-  it("changes nothing when the reminder is gone", async () => {
-    const result = await apply({ kind: "edit", code: "standup", changes: { at: "10:30" } });
-
-    assert.match(result.ephemeral, /no longer exists — nothing changed/);
-    assert.equal(result.channel, undefined);
-  });
-
-  it("refuses an edit that a since-changed reminder would make invalid", async () => {
-    seed({ days: "monday,tuesday", everyNWeeks: 1 });
-
-    const result = await apply({
-      kind: "edit",
-      code: "standup",
-      changes: { everyNWeeks: 2 },
-    });
-
-    assert.match(result.ephemeral, /changed since you asked/);
-    assert.equal(getReminder("C1", "standup")?.everyNWeeks, 1);
-  });
-});
-
-describe("remove and pause", () => {
+describe("remove", () => {
   it("removes the reminder", async () => {
     seed();
 
@@ -108,28 +56,6 @@ describe("remove and pause", () => {
 });
 
 describe("host rotation", () => {
-  it("replaces the roster and names who is up next", async () => {
-    const reminder = seed();
-
-    const result = await apply({
-      kind: "hostSet",
-      code: "standup",
-      userIds: ["U_A", "U_B", "U_C"],
-    });
-
-    assert.equal(listHosts(reminder.id).length, 3);
-    assert.match(result.channel ?? "", /is up next/);
-  });
-
-  it("keeps whoever already hosted out of the new lap", async () => {
-    const reminder = seed();
-    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_B"]);
-
-    await apply({ kind: "hostSet", code: "standup", userIds: ["U_A", "U_B", "U_C"] });
-
-    assert.ok(!pendingLap(listHosts(reminder.id)).includes("U_A"));
-  });
-
   it("sends the person who is up to the back of the lap on skip", async () => {
     const reminder = seed();
     replaceHosts(reminder.id, ["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
@@ -178,15 +104,6 @@ describe("host rotation", () => {
 
     assert.match(result.ephemeral, /no longer on/);
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_A", "U_B"]);
-  });
-
-  it("clears the rotation", async () => {
-    const reminder = seed();
-    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
-
-    await apply({ kind: "hostClear", code: "standup" });
-
-    assert.deepEqual(listHosts(reminder.id), []);
   });
 });
 

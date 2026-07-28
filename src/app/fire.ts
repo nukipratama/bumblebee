@@ -31,6 +31,7 @@ export async function fireReminder(reminder: Reminder, client: WebClient): Promi
   const host = lap[0];
 
   const post: ReminderPost = {
+    code: reminder.code,
     body: reminder.message,
     bodyFormat: reminder.bodyFormat,
     host,

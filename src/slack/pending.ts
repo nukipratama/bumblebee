@@ -1,17 +1,16 @@
 import { randomUUID } from "node:crypto";
-import type { NewReminder, ReminderChanges } from "../domain/types.js";
 
 const TTL_MS = 5 * 60_000;
 
+/**
+ * What a single click is allowed to do. Creating and editing are not here: a
+ * form's submit is its own confirmation, so it writes directly.
+ */
 export type PendingAction =
-  | { kind: "add"; reminder: NewReminder }
-  | { kind: "edit"; code: string; changes: ReminderChanges }
   | { kind: "remove"; code: string }
   | { kind: "run"; code: string }
   | { kind: "holidayAdd"; date: string }
   | { kind: "holidayRemove"; date: string }
-  | { kind: "hostSet"; code: string; userIds: string[] }
-  | { kind: "hostClear"; code: string }
   | { kind: "hostSkip"; code: string }
   | { kind: "hostNext"; code: string; userId: string };
 
