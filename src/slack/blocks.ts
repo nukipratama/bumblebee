@@ -9,6 +9,7 @@ export interface ReminderPost {
   body: string;
   bodyFormat: BodyFormat;
   host?: string;
+  hostUnavailable?: boolean;
   outToday: readonly string[];
   skippable: boolean;
   windowClosed: boolean;
@@ -29,6 +30,7 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
 
   const context: string[] = [];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
+  else if (post.hostUnavailable) context.push("⚠️ Nobody available to host today");
   if (post.outToday.length > 0) {
     context.push(`🚪 Out today: ${post.outToday.map(mention).join(", ")}`);
   }

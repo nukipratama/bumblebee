@@ -69,6 +69,22 @@ describe("reminderBlocks — host and out-today", () => {
     assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>, <@U_DANA>");
   });
 
+  it("reports that nobody is hosting when a handover found no one available", () => {
+    const text = contextText(
+      reminderBlocks(post({ hostUnavailable: true, outToday: ["U_BOB", "U_ALICE"] })),
+    );
+    assert.equal(text, "⚠️ Nobody available to host today\n🚪 Out today: <@U_BOB>, <@U_ALICE>");
+  });
+
+  it("names the host rather than the warning whenever there is one", () => {
+    const text = contextText(reminderBlocks(post({ host: "U_CARA", hostUnavailable: true })));
+    assert.equal(text, "🎙 Host: <@U_CARA>");
+  });
+
+  it("stays silent about hosting on a reminder that never had a roster", () => {
+    assert.deepEqual(typeOf(reminderBlocks(post({ outToday: [] }))), ["markdown"]);
+  });
+
   it("leaves no stray blank line when only one of the two is present", () => {
     assert.equal(contextText(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
     assert.equal(

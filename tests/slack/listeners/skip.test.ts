@@ -82,6 +82,45 @@ describe("the host hands over", () => {
     assert.ok(["U_B", "U_C"].includes(replacement!));
   });
 
+  it("passes over someone who already marked themselves out today", () => {
+    const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    applySkip(fire, reminder, "U_B", Date.now());
+
+    applySkip(fire, reminder, "U_A", Date.now());
+
+    assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_C");
+  });
+
+  it("leaves whoever was passed over in place, since being out costs no turn", () => {
+    const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    applySkip(fire, reminder, "U_B", Date.now());
+
+    applySkip(fire, reminder, "U_A", Date.now());
+
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_A"]);
+  });
+
+  it("leaves nobody hosting when everyone left in the lap is out", () => {
+    const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    applySkip(fire, reminder, "U_B", Date.now());
+    applySkip(fire, reminder, "U_C", Date.now());
+
+    const outcome = applySkip(fire, reminder, "U_A", Date.now());
+
+    assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, null);
+    assert.match(outcome.thread ?? "", /nobody is hosting/);
+  });
+
+  it("still marks the clicker out and keeps their turn when nobody can take over", () => {
+    const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
+    applySkip(fire, reminder, "U_B", Date.now());
+
+    applySkip(fire, reminder, "U_A", Date.now());
+
+    assert.deepEqual(listSkips(fire.id).sort(), ["U_A", "U_B"]);
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_A"]);
+  });
+
   it("refuses when they are the only person on the rotation", () => {
     const [fire, reminder] = fired(["U_A"], ["U_A"]);
 
