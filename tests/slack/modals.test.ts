@@ -5,6 +5,7 @@ import {
   type FormFields,
   daysFromSelection,
   parseAt,
+  plannedEdit,
   readSubmission,
   reminderModal,
   validate,
@@ -288,5 +289,64 @@ describe("daysFromSelection", () => {
 
   it("rejects an empty selection", () => {
     assert.equal(daysFromSelection([]).ok, false);
+  });
+});
+
+describe("plannedEdit", () => {
+  const stored = reminder({ at: "09:00", days: "monday", everyNWeeks: 1, message: "Standup!" });
+  const roster = [
+    { userId: "U_A", lapOrder: null },
+    { userId: "U_B", lapOrder: 0 },
+    { userId: "U_C", lapOrder: 1 },
+  ];
+  const unchanged = fields({
+    code: undefined,
+    message: "Standup!",
+    at: "09:00",
+    dayNames: ["monday"],
+    everyNWeeks: 1,
+    hosts: ["U_A", "U_B", "U_C"],
+  });
+
+  it("plans nothing when the form comes back exactly as it was opened", () => {
+    assert.deepEqual(plannedEdit(stored, roster, unchanged, "09:00", "monday"), {});
+  });
+
+  it("leaves the roster alone when the same people come back in a different order", () => {
+    const reordered = { ...unchanged, hosts: ["U_C", "U_A", "U_B"] };
+    const planned = plannedEdit(stored, roster, reordered, "09:00", "monday");
+
+    assert.equal(planned.hosts, undefined, "re-planning the lap would redraw a published order");
+  });
+
+  it("does not rewrite an unchanged message, which would reset the body format", () => {
+    const captured = reminder({ ...stored, bodyFormat: "mrkdwn" });
+    const planned = plannedEdit(captured, roster, { ...unchanged, at: "10:00" }, "10:00", "monday");
+
+    assert.equal(planned.at, "10:00");
+    assert.equal(planned.message, undefined);
+  });
+
+  it("plans each field that genuinely changed, and only those", () => {
+    const edited = { ...unchanged, message: "New!", everyNWeeks: 2, hosts: ["U_A", "U_B"] };
+    const planned = plannedEdit(stored, roster, edited, "16:30", "friday");
+
+    assert.deepEqual(planned, {
+      at: "16:30",
+      days: "friday",
+      everyNWeeks: 2,
+      message: "New!",
+      hosts: ["U_A", "U_B"],
+    });
+  });
+
+  it("plans an empty roster, which is how a rotation is cleared", () => {
+    const cleared = plannedEdit(stored, roster, { ...unchanged, hosts: [] }, "09:00", "monday");
+    assert.deepEqual(cleared.hosts, []);
+  });
+
+  it("ignores a message block that was never rendered", () => {
+    const noMessage = { ...unchanged, message: undefined };
+    assert.equal(plannedEdit(stored, roster, noMessage, "09:00", "monday").message, undefined);
   });
 });

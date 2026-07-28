@@ -47,6 +47,18 @@ export function hasHosted(member: Host): boolean {
   return member.lapOrder === null;
 }
 
+/**
+ * The roster is a set; the lap is the ordered thing. Re-planning a lap redraws
+ * it, so the caller needs to know the membership is untouched before deciding
+ * whether to redraw at all.
+ */
+export function sameRoster(existing: readonly Host[], userIds: readonly string[]): boolean {
+  const members = new Set(existing.map((member) => member.userId));
+  const chosen = new Set(userIds);
+
+  return members.size === chosen.size && [...chosen].every((userId) => members.has(userId));
+}
+
 /** Assumes `roster` is sorted hosted-first-then-pending, as `listHosts` returns it. */
 export function pendingLap(roster: readonly Host[]): string[] {
   return roster.filter((member) => !hasHosted(member)).map((member) => member.userId);

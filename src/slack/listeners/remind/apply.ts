@@ -1,27 +1,18 @@
 import type { WebClient } from "@slack/web-api";
 import { fireReminder } from "../../../app/fire.js";
-import { drawLapAvoiding, moveToBack, moveToFront, pendingLap, planLap } from "../../../domain/rotation.js";
-import { cadenceFitsDays } from "../../../domain/schedule.js";
-import type { NewReminder, ReminderChanges } from "../../../domain/types.js";
+import { drawLapAvoiding, moveToBack, moveToFront, pendingLap } from "../../../domain/rotation.js";
 import {
-  clearHosts,
   deleteHoliday,
   deleteReminder,
   getHoliday,
   getReminder,
   insertHoliday,
-  insertReminder,
   listHolidayDates,
   listHosts,
-  replaceHosts,
   setLap,
-  setReminderAt,
-  setReminderCadence,
-  setReminderDays,
-  setReminderMessage,
 } from "../../../store/reminders.js";
 import type { PendingEntry } from "../../pending.js";
-import { formatNextFire, formatSchedule, mention, mentionList } from "../../text.js";
+import { formatNextFire, mention } from "../../text.js";
 
 export interface ApplyResult {
   ephemeral: string;
@@ -31,43 +22,6 @@ export interface ApplyResult {
 const gone = (code: string, verb = "changed"): ApplyResult => ({
   ephemeral: `\`${code}\` no longer exists — nothing ${verb}`,
 });
-
-function applyAdd(entry: PendingEntry, reminder: NewReminder): ApplyResult {
-  if (getReminder(entry.channelId, reminder.code)) {
-    return { ephemeral: `\`${reminder.code}\` already exists now — nothing added` };
-  }
-
-  insertReminder(reminder);
-  return {
-    ephemeral: `Added \`${reminder.code}\`.`,
-    channel: `${mention(entry.userId)} added reminder \`${reminder.code}\` — ${formatSchedule(reminder)}`,
-  };
-}
-
-function applyEdit(entry: PendingEntry, code: string, changes: ReminderChanges): ApplyResult {
-  const existing = getReminder(entry.channelId, code);
-  if (!existing) return gone(code);
-
-  const merged = { ...existing, ...changes };
-  const fits = cadenceFitsDays(merged.everyNWeeks, merged.days);
-  if (!fits.ok) {
-    return {
-      ephemeral: `\`${code}\` changed since you asked — ${fits.error}. Nothing changed; run \`edit\` again.`,
-    };
-  }
-
-  const { at, days, message, everyNWeeks } = changes;
-  if (at !== undefined) setReminderAt(entry.channelId, code, at);
-  if (days !== undefined) setReminderDays(entry.channelId, code, days);
-  if (message !== undefined) setReminderMessage(entry.channelId, code, message);
-  if (everyNWeeks !== undefined) setReminderCadence(entry.channelId, code, everyNWeeks);
-
-  const updated = getReminder(entry.channelId, code)!;
-  return {
-    ephemeral: `Updated \`${code}\`.`,
-    channel: `${mention(entry.userId)} edited reminder \`${code}\` — now ${formatSchedule(updated)}`,
-  };
-}
 
 function applyRemove(entry: PendingEntry, code: string): ApplyResult {
   if (!getReminder(entry.channelId, code)) return gone(code, "removed");
@@ -117,32 +71,6 @@ function applyHolidayRemove(entry: PendingEntry, date: string): ApplyResult {
   };
 }
 
-function applyHostSet(entry: PendingEntry, code: string, userIds: string[]): ApplyResult {
-  const reminder = getReminder(entry.channelId, code);
-  if (!reminder) return gone(code);
-
-  replaceHosts(reminder.id, userIds, planLap(listHosts(reminder.id), userIds));
-  const upNext = pendingLap(listHosts(reminder.id))[0];
-
-  return {
-    ephemeral: `Rotation for \`${code}\` set — ${userIds.length} people.`,
-    channel:
-      `${mention(entry.userId)} set the rotation for \`${code}\` — ${mentionList(userIds)}` +
-      (upNext ? `. ${mention(upNext)} is up next` : ""),
-  };
-}
-
-function applyHostClear(entry: PendingEntry, code: string): ApplyResult {
-  const reminder = getReminder(entry.channelId, code);
-  if (!reminder) return gone(code);
-
-  clearHosts(reminder.id);
-  return {
-    ephemeral: `Rotation removed from \`${code}\`.`,
-    channel: `${mention(entry.userId)} removed the rotation from \`${code}\``,
-  };
-}
-
 function applyHostSkip(entry: PendingEntry, code: string): ApplyResult {
   const reminder = getReminder(entry.channelId, code);
   if (!reminder) return gone(code);
@@ -185,10 +113,6 @@ export async function applyAction(entry: PendingEntry, client: WebClient): Promi
   const { action } = entry;
 
   switch (action.kind) {
-    case "add":
-      return applyAdd(entry, action.reminder);
-    case "edit":
-      return applyEdit(entry, action.code, action.changes);
     case "remove":
       return applyRemove(entry, action.code);
     case "run":
@@ -197,10 +121,6 @@ export async function applyAction(entry: PendingEntry, client: WebClient): Promi
       return applyHolidayAdd(entry, action.date);
     case "holidayRemove":
       return applyHolidayRemove(entry, action.date);
-    case "hostSet":
-      return applyHostSet(entry, action.code, action.userIds);
-    case "hostClear":
-      return applyHostClear(entry, action.code);
     case "hostSkip":
       return applyHostSkip(entry, action.code);
     case "hostNext":

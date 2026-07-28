@@ -30,13 +30,6 @@ export interface NewReminder {
   createdBy: string;
 }
 
-export interface ReminderChanges {
-  at?: string;
-  days?: string;
-  message?: string;
-  everyNWeeks?: number;
-}
-
 export interface Holiday {
   date: string;
   addedBy: string;

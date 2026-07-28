@@ -369,13 +369,28 @@ root-owned and break SQLite. Back it up with `docker cp bumblebee:/app/data/bumb
 
 ### Verifying a deploy
 
-1. Logs show `⚡️ Bumblebee running (socket mode)` and **no** `TZ misconfigured` line.
-2. `docker exec bumblebee date` prints `WIB` / `+0700` — proves `tzdata` made it into the image.
-3. `@Bumblebee what's 2+2?` replies in-thread; a follow-up in that thread keeps context.
-4. `/bee-status` returns status, token usage and this channel's reminder state.
-5. `/bee-remind list` → **+ New reminder** → name `smoke`, a minute from now, message `hello` →
-   **Create** → it posts on the minute. Then **Edit** on that row: the form comes up prefilled.
-6. ⋮ → **Make this a reminder** on any message → **Create** → it posts back byte-identical.
-7. **Edit** `smoke`, add yourself and someone else to **Host rotation**, **Save** → **Run now** on that row three times: a
-   different host each time, each a real blue mention, and the third rolls the lap over. Then
-   **Remove** → Approve. The list it was clicked from should still be there afterwards.
+Do this in a **scratch channel**, and `/invite @Bumblebee` first or nothing can post. Almost every
+failure on this surface is silent — a wrong action ID renders fine and does nothing — so each step
+says what a failure would mean.
+
+| # | Do | Expect | A failure means |
+|---|---|---|---|
+| 1 | Container logs | `⚡️ Bumblebee running (socket mode)`, no `TZ misconfigured` | — |
+| 2 | `docker exec bumblebee date` | `WIB` / `+0700` | `tzdata` missing from the image |
+| 3 | `@Bumblebee what's 2+2?`, then a follow-up in that thread | Replies in-thread, keeps context | Missing `channels:history` / `groups:history` |
+| 4 | `/bee-remind help` | Four commands, nothing retired | — |
+| 5 | `/bee-remind list` in an empty channel | "No reminders yet" **and** `+ New reminder` | Without the button there is no way to create one from scratch |
+| 6 | **+ New reminder** → name `smoke`, a minute away, message `hello` → **Create** | Announced in channel, then posts on the minute | No dialog → Interactivity off. Submit does nothing → `callback_id` ≠ `remind_form` |
+| 7 | **Edit** on that row | Opens **prefilled** | Blank fields → the prefill path |
+| 8 | Add two hosts, **Save**. `show smoke`, note the order. **Edit**, change **only the time**, **Save**, `show` again | Rotation order **unchanged** | A redraw — `plannedEdit` isn't guarding `replaceHosts` |
+| 9 | **Run now** → **Approve** | Posts; **the list is still there** above the prompt | The prompt used `replace_original` |
+| 10 | `show smoke` → **Skip host** → **Approve** | Up-next moves to the back | — |
+| 11 | `show smoke` → the **user picker** → **Approve** | That person is up next | The code isn't round-tripping through `block_id` |
+| 12 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
+| 13 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke |
+| 14 | Any fired post | Ends with the reminder's code in grey | — |
+| 15 | `/bee-remind add foo` | Says where `add` went | — |
+| 16 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
+
+Buttons on a `list` older than ~30 minutes stop responding — Slack expires the slash command's
+`response_url` (30 min / 5 uses). Re-run `list`. That is expected, not a regression.

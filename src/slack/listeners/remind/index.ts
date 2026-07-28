@@ -18,6 +18,19 @@ import { askFromRow } from "./prompt.js";
 import { handleList, handleShow } from "./reminders.js";
 import { registerRotationActions } from "./rotation.js";
 
+const LIST_IT = "Run `/bee-remind list`";
+
+/** These were commands for months. A generic "unknown subcommand" wastes that muscle memory. */
+const RETIRED: Record<string, string> = {
+  add: `\`add\` is a form now. ${LIST_IT} and click *+ New reminder* — or turn a message you already wrote into one with ⋮ *More actions* → *Make this a reminder*.`,
+  edit: `\`edit\` is a form now. ${LIST_IT} and click *Edit* on the row.`,
+  run: `\`run\` is a button now. ${LIST_IT} and click *Run now* on the row.`,
+  remove: `\`remove\` is a button now. ${LIST_IT} and click *Remove* on the row.`,
+  host: "The roster is the *Host rotation* field on the reminder's form. `/bee-remind show <code>` has *Skip host* and a picker for who is up next.",
+  pause: "Pausing is gone — remove the reminder instead, or edit it to a schedule you want.",
+  resume: "Pausing is gone, so there is nothing to resume.",
+};
+
 async function dispatch(ctx: CommandContext, text: string): Promise<void> {
   const trimmed = text.trim();
   const boundary = trimmed.indexOf(" ");
@@ -29,6 +42,10 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     return;
   }
   if (subcommand === "holiday") {
+    // Silently ignoring `holiday add 2026-08-17` would look like it worked.
+    if (rest !== "") {
+      await ctx.respond("`holiday` takes no arguments — use the date picker below to add one.");
+    }
     await handleHolidayList(ctx);
     return;
   }
@@ -36,12 +53,13 @@ async function dispatch(ctx: CommandContext, text: string): Promise<void> {
     await handleList(ctx);
     return;
   }
-
   if (subcommand === "show") {
     await handleShow(ctx, rest);
     return;
   }
-  await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
+
+  const retired = RETIRED[subcommand];
+  await ctx.respond(retired ?? `unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
 }
 
 interface ConfirmationArgs {

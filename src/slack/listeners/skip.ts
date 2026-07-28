@@ -102,6 +102,7 @@ async function repost(
   const hasRoster = listHosts(reminder.id).length > 0;
 
   const post = {
+    code: reminder.code,
     body: reminder.message,
     bodyFormat: reminder.bodyFormat,
     host: current.hostUserId ?? undefined,

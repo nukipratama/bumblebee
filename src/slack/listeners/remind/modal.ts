@@ -18,6 +18,7 @@ import {
   REMINDER_FORM,
   type FormFields,
   type FormSource,
+  plannedEdit,
   readSubmission,
   reminderModal,
   validate,
@@ -45,20 +46,16 @@ async function readSourceMessage(
 
 function applyEdit(existing: Reminder, fields: FormFields, at: string, days: string): void {
   const { channelId, code } = existing;
+  const roster = listHosts(existing.id);
+  const planned = plannedEdit(existing, roster, fields, at, days);
 
-  if (at !== existing.at) setReminderAt(channelId, code, at);
-  if (days !== existing.days) setReminderDays(channelId, code, days);
-  if (fields.everyNWeeks !== existing.everyNWeeks) {
-    setReminderCadence(channelId, code, fields.everyNWeeks);
+  if (planned.at !== undefined) setReminderAt(channelId, code, planned.at);
+  if (planned.days !== undefined) setReminderDays(channelId, code, planned.days);
+  if (planned.everyNWeeks !== undefined) setReminderCadence(channelId, code, planned.everyNWeeks);
+  if (planned.message !== undefined) setReminderMessage(channelId, code, planned.message);
+  if (planned.hosts !== undefined) {
+    replaceHosts(existing.id, planned.hosts, planLap(roster, planned.hosts));
   }
-  // Only when the text actually changed: setReminderMessage also resets the
-  // body format to Markdown, which would silently reinterpret a body captured
-  // from a Slack message.
-  if (fields.message !== undefined && fields.message !== existing.message) {
-    setReminderMessage(channelId, code, fields.message);
-  }
-
-  replaceHosts(existing.id, fields.hosts, planLap(listHosts(existing.id), fields.hosts));
 }
 
 export function registerReminderForm(app: App): void {

@@ -8,6 +8,7 @@ import {
   moveToFront,
   pendingLap,
   planLap,
+  sameRoster,
   shuffle,
 } from "../../src/domain/rotation.js";
 import type { Host } from "../../src/domain/types.js";
@@ -150,7 +151,7 @@ describe("moveToFront", () => {
     assert.deepEqual(moveToFront(ROSTER, "alice"), ROSTER);
   });
 
-  it("inserts someone absent from the lap — how `host next` re-adds a past host", () => {
+  it("inserts someone absent from the lap — how the up-next picker re-adds a past host", () => {
     assert.deepEqual(moveToFront(ROSTER, "dave"), ["dave", "alice", "bob", "cara"]);
   });
 });
@@ -166,5 +167,37 @@ describe("moveToBack", () => {
 
   it("cannot reorder a single-item lap — why `skip` needs its own lap-closing path", () => {
     assert.deepEqual(moveToBack(["alice"], "alice"), ["alice"]);
+  });
+});
+
+describe("sameRoster", () => {
+  const roster = (...userIds: string[]): Host[] =>
+    userIds.map((userId, index) => ({ userId, lapOrder: index }));
+
+  it("ignores order, because the roster is a set and the lap is the ordered thing", () => {
+    assert.equal(sameRoster(roster("alice", "bob", "cara"), ["cara", "alice", "bob"]), true);
+  });
+
+  it("ignores who has already hosted", () => {
+    const midLap: Host[] = [
+      { userId: "alice", lapOrder: null },
+      { userId: "bob", lapOrder: 0 },
+    ];
+    assert.equal(sameRoster(midLap, ["alice", "bob"]), true);
+  });
+
+  it("spots an addition, a removal, and a swap", () => {
+    assert.equal(sameRoster(roster("alice", "bob"), ["alice", "bob", "cara"]), false);
+    assert.equal(sameRoster(roster("alice", "bob"), ["alice"]), false);
+    assert.equal(sameRoster(roster("alice", "bob"), ["alice", "cara"]), false);
+  });
+
+  it("treats two empty rosters as the same, so a rotation-less reminder is left alone", () => {
+    assert.equal(sameRoster([], []), true);
+  });
+
+  it("spots clearing a roster, and adding the first one", () => {
+    assert.equal(sameRoster(roster("alice"), []), false);
+    assert.equal(sameRoster([], ["alice"]), false);
   });
 });

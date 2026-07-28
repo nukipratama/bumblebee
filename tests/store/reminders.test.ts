@@ -8,7 +8,6 @@ useTempDatabase();
 const { initDb, stmt } = await import("../../src/store/database.js");
 const {
   addSkip,
-  clearHosts,
   deleteHoliday,
   deleteReminder,
   getFireByMessageTs,
@@ -152,10 +151,10 @@ describe("host rosters", () => {
     ]);
   });
 
-  it("drops the whole roster on clear", () => {
+  it("drops the whole roster when the form comes back with nobody selected", () => {
     const id = seed();
     replaceHosts(id, ["U_A"], ["U_A"]);
-    clearHosts(id);
+    replaceHosts(id, [], []);
 
     assert.deepEqual(listHosts(id).map(plain), []);
   });
