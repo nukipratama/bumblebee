@@ -1,6 +1,14 @@
 import type { StatementSync } from "node:sqlite";
 import { db } from "./index.js";
 
+/**
+ * Which markup flavour `message` is written in. Slash-command messages are
+ * standard Markdown; ones captured from a Slack message are mrkdwn, where the
+ * same asterisks mean something else. Each is rendered through the block type
+ * that reads it correctly, never converted.
+ */
+export type BodyFormat = "markdown" | "mrkdwn";
+
 export interface Reminder {
   id: number;
   channelId: string;
@@ -8,6 +16,7 @@ export interface Reminder {
   at: string;
   days: string;
   message: string;
+  bodyFormat: BodyFormat;
   everyNWeeks: number;
   enabled: boolean;
   lastFiredAt: string | null;
@@ -21,6 +30,7 @@ export interface NewReminder {
   at: string;
   days: string;
   message: string;
+  bodyFormat: BodyFormat;
   everyNWeeks: number;
   createdBy: string;
 }
@@ -50,6 +60,16 @@ export interface FireRecord {
   hostUserId: string | null;
   messageTs: string | null;
   nextLap: readonly string[];
+}
+
+/** One occurrence of a reminder, as located by the message the skip button sits on. */
+export interface Fire {
+  id: number;
+  reminderId: number;
+  firedOn: string;
+  firedAt: string;
+  hostUserId: string | null;
+  messageTs: string | null;
 }
 
 // Statements are prepared lazily (memoized) rather than at module load, because
@@ -82,11 +102,19 @@ const REMINDER_COLUMNS = `id,
          at,
          days,
          message,
+         body_format   AS bodyFormat,
          every_n_weeks AS everyNWeeks,
          enabled,
          last_fired_at AS lastFiredAt,
          created_by    AS createdBy,
          created_at    AS createdAt`;
+
+const FIRE_COLUMNS = `id,
+         reminder_id  AS reminderId,
+         fired_on     AS firedOn,
+         fired_at     AS firedAt,
+         host_user_id AS hostUserId,
+         message_ts   AS messageTs`;
 
 const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
@@ -100,14 +128,15 @@ const toReminder = (row: ReminderRow): Reminder => ({ ...row, enabled: row.enabl
 export function insertReminder(reminder: NewReminder): void {
   stmt(
     `INSERT INTO reminders
-       (channel_id, code, at, days, message, every_n_weeks, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (channel_id, code, at, days, message, body_format, every_n_weeks, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     reminder.channelId,
     reminder.code,
     reminder.at,
     reminder.days,
     reminder.message,
+    reminder.bodyFormat,
     reminder.everyNWeeks,
     reminder.createdBy,
     new Date().toISOString(),
@@ -118,6 +147,14 @@ export function getReminder(channelId: string, code: string): Reminder | undefin
   const row = stmt(
     `SELECT ${REMINDER_COLUMNS} FROM reminders WHERE channel_id = ? AND code = ?`,
   ).get(channelId, code) as unknown as ReminderRow | undefined;
+  return row && toReminder(row);
+}
+
+/** By id, because a skip button knows its fire but not the channel's code. */
+export function getReminderById(id: number): Reminder | undefined {
+  const row = stmt(`SELECT ${REMINDER_COLUMNS} FROM reminders WHERE id = ?`).get(id) as unknown as
+    | ReminderRow
+    | undefined;
   return row && toReminder(row);
 }
 
@@ -147,12 +184,15 @@ export function setReminderDays(channelId: string, code: string, days: string): 
   );
 }
 
+/**
+ * Also resets `body_format`, because `edit --message` always supplies Markdown.
+ * Leaving a captured row flagged `mrkdwn` would render the new text through the
+ * wrong block.
+ */
 export function setReminderMessage(channelId: string, code: string, message: string): void {
-  stmt("UPDATE reminders SET message = ? WHERE channel_id = ? AND code = ?").run(
-    message,
-    channelId,
-    code,
-  );
+  stmt(
+    "UPDATE reminders SET message = ?, body_format = 'markdown' WHERE channel_id = ? AND code = ?",
+  ).run(message, channelId, code);
 }
 
 export function setReminderCadence(channelId: string, code: string, everyNWeeks: number): void {
@@ -189,9 +229,15 @@ export function recordFire(record: FireRecord): void {
       record.reminderId,
     );
     stmt(
-      `INSERT INTO reminder_fires (reminder_id, fired_on, host_user_id, message_ts)
-       VALUES (?, ?, ?, ?)`,
-    ).run(record.reminderId, record.firedOn, record.hostUserId, record.messageTs);
+      `INSERT INTO reminder_fires (reminder_id, fired_on, fired_at, host_user_id, message_ts)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      record.reminderId,
+      record.firedOn,
+      record.firedAt.toISOString(),
+      record.hostUserId,
+      record.messageTs,
+    );
     writeLap(record.reminderId, record.nextLap);
   });
 }
@@ -276,6 +322,34 @@ export function replaceHosts(
 
 export function clearHosts(reminderId: number): void {
   stmt("DELETE FROM reminder_hosts WHERE reminder_id = ?").run(reminderId);
+}
+
+/** The occurrence a skip button belongs to. Undefined for any other message. */
+export function getFireByMessageTs(messageTs: string): Fire | undefined {
+  return stmt(`SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE message_ts = ?`).get(
+    messageTs,
+  ) as unknown as Fire | undefined;
+}
+
+/** Records who actually hosted, after a handover replaces whoever was named. */
+export function setFireHost(fireId: number, hostUserId: string): void {
+  stmt("UPDATE reminder_fires SET host_user_id = ? WHERE id = ?").run(hostUserId, fireId);
+}
+
+/** Returns false when this person was already down as out, so callers can say so. */
+export function addSkip(fireId: number, userId: string): boolean {
+  const result = stmt(
+    `INSERT OR IGNORE INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)`,
+  ).run(fireId, userId, new Date().toISOString());
+  return result.changes > 0;
+}
+
+/** Who is out of this occurrence, oldest first, which is the order the post lists them. */
+export function listSkips(fireId: number): string[] {
+  const rows = stmt(
+    "SELECT user_id AS userId FROM reminder_skips WHERE fire_id = ? ORDER BY created_at, user_id",
+  ).all(fireId) as unknown as { userId: string }[];
+  return rows.map((row) => row.userId);
 }
 
 /** Most recent hosting date per user, which is what dates the ✓ rows in `show`. */

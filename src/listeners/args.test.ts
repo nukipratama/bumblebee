@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  daysFromSelection,
   normalizeMentions,
-  parseUserMentions,
   parseArgs,
   parseAt,
   parseCadence,
   parseDate,
   parseDays,
+  parseUserMentions,
+  suggestCode,
   unescapeNewlines,
   type FlagSpec,
 } from "./args.js";
@@ -194,5 +196,61 @@ describe("parseUserMentions", () => {
 
   it("rejects an empty list", () => {
     assert.equal(parseUserMentions([]).ok, false);
+  });
+});
+
+describe("suggestCode", () => {
+  const none = new Set<string>();
+
+  it("slugs the opening words", () => {
+    assert.equal(suggestCode("Standup time! Please join", none), "standup-time-please");
+  });
+
+  it("ignores mentions, channel links and broadcasts", () => {
+    assert.equal(suggestCode("<@U1|alice> sprint planning <!channel>", none), "sprint-planning");
+    assert.equal(suggestCode("<#C1|eng> code freeze", none), "code-freeze");
+  });
+
+  it("falls back when nothing usable survives", () => {
+    assert.equal(suggestCode("<@U1|alice>", none), "reminder");
+    assert.equal(suggestCode("🎉 ✨", none), "reminder");
+    assert.equal(suggestCode("", none), "reminder");
+  });
+
+  it("keeps whole words rather than cutting one in half", () => {
+    const code = suggestCode("extraordinarily circumlocutory pronouncement", none);
+    assert.equal(code, "extraordinarily");
+  });
+
+  it("still yields something when the first word alone is too long", () => {
+    const code = suggestCode("a".repeat(40), none);
+    assert.equal(code, "a".repeat(24));
+  });
+
+  it("suffixes past anything already taken", () => {
+    assert.equal(suggestCode("standup", new Set(["standup"])), "standup-2");
+    assert.equal(suggestCode("standup", new Set(["standup", "standup-2"])), "standup-3");
+  });
+});
+
+describe("daysFromSelection", () => {
+  const ALL = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+  it("returns a single day", () => {
+    const parsed = daysFromSelection(["monday"]);
+    assert.deepEqual(parsed, { ok: true, value: "monday" });
+  });
+
+  it("orders several days by the week, not by how they were ticked", () => {
+    const parsed = daysFromSelection(["friday", "monday", "wednesday"]);
+    assert.deepEqual(parsed, { ok: true, value: "monday,wednesday,friday" });
+  });
+
+  it("collapses all seven to the daily marker, matching `--on daily`", () => {
+    assert.deepEqual(daysFromSelection(ALL), { ok: true, value: "*" });
+  });
+
+  it("rejects an empty selection", () => {
+    assert.equal(daysFromSelection([]).ok, false);
   });
 });

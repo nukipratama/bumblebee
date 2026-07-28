@@ -62,6 +62,23 @@ const migrations: string[] = [
      host_user_id TEXT,
      message_ts   TEXT
    )`,
+  // Which flavour of markup `message` is written in. Slash-command messages are
+  // standard Markdown; ones captured from a Slack message are mrkdwn, where the
+  // same asterisks mean something else. Stored so each is rendered through the
+  // matching block type rather than converted.
+  `ALTER TABLE reminders
+     ADD COLUMN body_format TEXT NOT NULL DEFAULT 'markdown'
+     CHECK (body_format IN ('markdown', 'mrkdwn'))`,
+  `CREATE TABLE reminder_skips (
+     fire_id    INTEGER NOT NULL REFERENCES reminder_fires(id) ON DELETE CASCADE,
+     user_id    TEXT    NOT NULL,
+     created_at TEXT    NOT NULL,
+     PRIMARY KEY (fire_id, user_id)
+   )`,
+  // fired_on is only a date, but the handover window is measured in minutes.
+  // Null on rows written before this column existed, which reads as "too old to
+  // hand over" — the right answer for a fire that already happened.
+  `ALTER TABLE reminder_fires ADD COLUMN fired_at TEXT`,
 ];
 
 /** Apply any pending schema migrations. Idempotent; safe to call on every boot. */

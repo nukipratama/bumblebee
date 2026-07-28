@@ -20,9 +20,10 @@ src/
 ├── db/
 │   ├── index.ts        # node:sqlite connection + append-only migrations array
 │   ├── ai-usage.ts     # record / summarize AI token usage
-│   └── reminders.ts    # reminders, holidays, host rosters + fire history
+│   └── reminders.ts    # reminders, holidays, host rosters, fire history + skips
 ├── scheduler/
 │   ├── index.ts        # startScheduler(app) — minute tick + fireReminder()
+│   ├── blocks.ts       # renders a reminder post + its Skip today button — pure, no db import
 │   ├── clock.ts        # local wall clock, daysBetween, assertJakarta
 │   ├── next.ts         # matches / cadenceOk / nextFire — pure, no db import
 │   └── rotation.ts     # shuffle / drawLap / planLap / move* — pure, no db import
@@ -31,6 +32,8 @@ src/
     ├── command.ts      # /bee-status slash command (status + AI usage + reminder state)
     ├── mention.ts      # app_mention → thread-aware Azure OpenAI reply
     ├── remind.ts       # /bee-remind + the Approve/Reject button handlers
+    ├── shortcut.ts     # "Make this a reminder" message shortcut → modal → create
+    ├── skip.ts         # Skip today button — host handover + out-today list
     ├── args.ts         # flag parsing / validation — pure
     └── pending.ts      # in-memory confirmations awaiting a click — pure
 ```
@@ -80,11 +83,16 @@ src/
 - Thread context comes from `client.conversations.replies` (needs `channels:history` +
   `groups:history` scopes); a top-level mention is single-turn.
 - Bot scopes live in the Slack app config; the README's "Slack app setup" is the source of truth.
-- Two app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be on
-  or the Approve/Reject buttons do nothing, and *"Escape channels, users, and links"* must be ticked on
-  `/bee-remind` or `@someone` arrives as literal text with no user ID.
-- Slash-command replies use `respond()` (ephemeral) with hand-rolled mrkdwn. Block Kit is used **only**
-  for the confirmation buttons.
+- Three app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
+  on or every button does nothing; *"Escape channels, users, and links"* must be ticked on
+  `/bee-remind` or `@someone` arrives as literal text with no user ID; and the message shortcut's
+  callback ID must be exactly `remind_from_message` or the menu item appears and does nothing.
+- Slash-command replies use `respond()` (ephemeral) with hand-rolled mrkdwn. Events and actions have no
+  `respond()` — use `client.chat.postEphemeral` there.
+- **A reminder's message has a dialect.** `reminders.body_format` is `markdown` for anything typed into
+  `/bee-remind` and `mrkdwn` for anything captured from a Slack message. `scheduler/blocks.ts` renders
+  each through the block that reads it as written — `*word*` is italic in one and bold in the other, so
+  converting between them silently changes people's text. Never convert; carry the format.
 
 ## Config & secrets
 
