@@ -270,10 +270,17 @@ describe("skips", () => {
 
   it("breaks a same-instant tie on user id, so the list never reshuffles itself", () => {
     const fireId = fireWithSkips();
-    addSkip(fireId, "U_B");
-    addSkip(fireId, "U_A");
+    // Written directly: two addSkip calls only collide when they land in the
+    // same millisecond, which makes the tie itself untestable through them.
+    const sameInstant = "2026-07-27T09:00:00.000Z";
+    for (const userId of ["U_B", "U_A"]) {
+      stmt("INSERT INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)").run(
+        fireId,
+        userId,
+        sameInstant,
+      );
+    }
 
-    assert.deepEqual(listSkips(fireId), listSkips(fireId));
     assert.deepEqual(listSkips(fireId), ["U_A", "U_B"]);
   });
 });

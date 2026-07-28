@@ -21,7 +21,8 @@ const { fireReminder } = await import("../../src/app/fire.js");
 
 initDb();
 
-const TODAY = localParts(new Date()).date;
+/** Read per-test, not once at load: the suite must not care if it straddles midnight. */
+const today = (): string => localParts(new Date()).date;
 
 beforeEach(() => {
   stmt("DELETE FROM reminders").run();
@@ -125,7 +126,7 @@ describe("fireReminder — a failed post costs nobody their turn", () => {
 describe("fireReminder — guards", () => {
   it("skips a holiday without posting or recording anything", async () => {
     const reminder = withRoster(["U_A", "U_B"]);
-    insertHoliday({ date: TODAY, addedBy: "U_X", addedInChannel: "C1" });
+    insertHoliday({ date: today(), addedBy: "U_X", addedInChannel: "C1" });
     const { client, posted } = fakeClient();
 
     const outcome = await fireReminder(reminder, client);
