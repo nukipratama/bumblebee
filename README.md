@@ -126,7 +126,8 @@ The easiest route, and the only one with a real multi-line message box:
 1. Write the message in the channel exactly as you want it to post — line breaks, `@mentions`, bold,
    emoji.
 2. Hover it → **⋮ More actions** → **Make this a reminder**.
-3. Fill in the dialog: name, time, days, repeat, optional host rotation → **Create**.
+3. Fill in the dialog: name, time (24-hour, to the minute — `09:15`), days, repeat, optional host
+   rotation → **Create**.
 
 No quotes, no escaping. The dialog's **Create** button *is* the confirmation, so there's no second
 Approve step here. It posts back exactly as written: Bumblebee records that the text came from Slack
