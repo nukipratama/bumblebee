@@ -73,6 +73,10 @@ const migrations: string[] = [
   // row left at 0 would silently start firing. Normalise it here instead. The
   // column itself has to stay: these migrations are append-only.
   `UPDATE reminders SET enabled = 1 WHERE enabled = 0`,
+  // Optional free text, so NULL is "they gave no reason", not a missing answer.
+  `ALTER TABLE reminder_skips ADD COLUMN reason TEXT`,
+  // The thread reply carrying that reason, so editing rewrites it instead of piling up.
+  `ALTER TABLE reminder_skips ADD COLUMN notice_ts TEXT`,
 ];
 
 export function initDb(): void {

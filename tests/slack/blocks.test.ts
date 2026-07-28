@@ -18,9 +18,8 @@ function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
     code: "standup",
     body: "Standup time!",
     bodyFormat: "markdown",
-    outToday: [],
+    skips: [],
     skippable: false,
-    windowClosed: false,
     ...overrides,
   };
 }
@@ -61,7 +60,7 @@ describe("reminderBlocks — body dialect", () => {
   });
 });
 
-describe("reminderBlocks — host and out-today", () => {
+describe("reminderBlocks — host and skips", () => {
   it("says nothing about hosting when there is neither", () => {
     assert.equal(hostContext(reminderBlocks(post())), undefined);
   });
@@ -70,28 +69,26 @@ describe("reminderBlocks — host and out-today", () => {
     assert.equal(hostContext(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
   });
 
-  it("lists one person out", () => {
-    const text = hostContext(reminderBlocks(post({ outToday: ["U_BOB"] })));
-    assert.equal(text, "🚪 Out today: <@U_BOB>");
+  it("lists one person skipping", () => {
+    const text = hostContext(reminderBlocks(post({ skips: ["U_BOB"] })));
+    assert.equal(text, "🔕 Skip: <@U_BOB>");
   });
 
-  it("lists several people out, in the order given", () => {
-    const text = hostContext(reminderBlocks(post({ outToday: ["U_BOB", "U_DANA"] })));
-    assert.equal(text, "🚪 Out today: <@U_BOB>, <@U_DANA>");
+  it("lists several people skipping, in the order given", () => {
+    const text = hostContext(reminderBlocks(post({ skips: ["U_BOB", "U_DANA"] })));
+    assert.equal(text, "🔕 Skip: <@U_BOB>, <@U_DANA>");
   });
 
-  it("puts out-today on its own line, so a long list never crowds the host", () => {
-    const text = hostContext(
-      reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB", "U_DANA"] })),
-    );
-    assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>, <@U_DANA>");
+  it("puts the skips on their own line, so a long list never crowds the host", () => {
+    const text = hostContext(reminderBlocks(post({ host: "U_ALICE", skips: ["U_BOB", "U_DANA"] })));
+    assert.equal(text, "🎙 Host: <@U_ALICE>\n🔕 Skip: <@U_BOB>, <@U_DANA>");
   });
 
   it("reports that nobody is hosting when a handover found no one available", () => {
     const text = hostContext(
-      reminderBlocks(post({ hostUnavailable: true, outToday: ["U_BOB", "U_ALICE"] })),
+      reminderBlocks(post({ hostUnavailable: true, skips: ["U_BOB", "U_ALICE"] })),
     );
-    assert.equal(text, "⚠️ Nobody available to host today\n🚪 Out today: <@U_BOB>, <@U_ALICE>");
+    assert.equal(text, "⚠️ Nobody available to host\n🔕 Skip: <@U_BOB>, <@U_ALICE>");
   });
 
   it("names the host rather than the warning whenever there is one", () => {
@@ -100,29 +97,26 @@ describe("reminderBlocks — host and out-today", () => {
   });
 
   it("stays silent about hosting on a reminder that never had a roster", () => {
-    assert.deepEqual(typeOf(reminderBlocks(post({ outToday: [] }))), ["markdown", "context"]);
-    assert.equal(hostContext(reminderBlocks(post({ outToday: [] }))), undefined);
+    assert.deepEqual(typeOf(reminderBlocks(post({ skips: [] }))), ["markdown", "context"]);
+    assert.equal(hostContext(reminderBlocks(post({ skips: [] }))), undefined);
   });
 
   it("leaves no stray blank line when only one of the two is present", () => {
     assert.equal(hostContext(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
-    assert.equal(
-      hostContext(reminderBlocks(post({ outToday: ["U_BOB"] }))),
-      "🚪 Out today: <@U_BOB>",
-    );
+    assert.equal(hostContext(reminderBlocks(post({ skips: ["U_BOB"] }))), "🔕 Skip: <@U_BOB>");
   });
 });
 
 describe("reminderBlocks — the code", () => {
   it("names the reminder on every post, so a post leads back to `show <code>`", () => {
-    for (const overrides of [{}, { host: "U_ALICE" }, { outToday: ["U_BOB"] }]) {
-      assert.match(contextText(reminderBlocks(post(overrides))) ?? "", /`standup`$/);
+    for (const overrides of [{}, { host: "U_ALICE" }, { skips: ["U_BOB"] }]) {
+      assert.match(contextText(reminderBlocks(post(overrides))) ?? "", /⚙️ `standup`$/);
     }
   });
 
   it("puts it last, below whoever is hosting", () => {
-    const text = contextText(reminderBlocks(post({ host: "U_ALICE", outToday: ["U_BOB"] })));
-    assert.equal(text, "🎙 Host: <@U_ALICE>\n🚪 Out today: <@U_BOB>\n`standup`");
+    const text = contextText(reminderBlocks(post({ host: "U_ALICE", skips: ["U_BOB"] })));
+    assert.equal(text, "🎙 Host: <@U_ALICE>\n🔕 Skip: <@U_BOB>\n⚙️ `standup`");
   });
 });
 
@@ -131,26 +125,17 @@ describe("reminderBlocks — skip button", () => {
     assert.ok(!typeOf(reminderBlocks(post())).includes("actions"));
   });
 
-  it("is present and open while the window is live", () => {
-    const blocks = reminderBlocks(post({ skippable: true }));
+  it("reads the same for everyone, since one post cannot render per viewer", () => {
+    const blocks = reminderBlocks(post({ skippable: true, skips: ["U_BOB"] }));
     const actions = blocks.find((block) => block.type === "actions");
     assert.ok(actions && actions.type === "actions");
     assert.deepEqual(actions.elements, [
       {
         type: "button",
         action_id: SKIP_ACTION,
-        text: { type: "plain_text", text: "Skip today" },
-        value: "open",
+        text: { type: "plain_text", text: "Skip me" },
       },
     ]);
-  });
-
-  it("reports itself closed rather than disappearing once the window passes", () => {
-    const blocks = reminderBlocks(post({ skippable: true, windowClosed: true }));
-    const actions = blocks.find((block) => block.type === "actions");
-    assert.ok(actions && actions.type === "actions");
-    const [button] = actions.elements;
-    assert.ok(button && "text" in button && button.text?.text === "Skip closed");
   });
 });
 
@@ -158,9 +143,9 @@ describe("fallbackText", () => {
   it("is never empty, in every permutation", () => {
     for (const bodyFormat of ["markdown", "mrkdwn"] as const) {
       for (const host of [undefined, "U_ALICE"]) {
-        for (const outToday of [[], ["U_BOB"]]) {
+        for (const skips of [[], ["U_BOB"]]) {
           for (const skippable of [false, true]) {
-            const text = fallbackText(post({ bodyFormat, host, outToday, skippable }));
+            const text = fallbackText(post({ bodyFormat, host, skips, skippable }));
             assert.ok(text.length > 0);
           }
         }

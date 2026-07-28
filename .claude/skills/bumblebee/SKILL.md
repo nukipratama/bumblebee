@@ -44,7 +44,7 @@ src/
 ├── ai/index.ts                 # AzureOpenAI client + generateReply() — returns raw Markdown
 └── slack/
     ├── blocks.ts               # reminder post blocks, confirm buttons, the list rows + their ids
-    ├── modals.ts               # the one reminder form: create · from-message · edit (pure)
+    ├── modals.ts               # two views (pure): the reminder form + the skip reason dialog
     ├── text.ts                 # mrkdwn formatting (pure — takes data, never queries)
     ├── pending.ts              # PendingAction union + confirmations awaiting a click
     └── listeners/
@@ -52,7 +52,7 @@ src/
         ├── status.ts           # /bee-status
         ├── mention.ts          # app_mention → thread-aware Azure OpenAI reply
         ├── shortcut.ts         # "Make this a reminder" message shortcut → opens the form
-        ├── skip.ts             # Skip today button — host handover + out-today list
+        ├── skip.ts             # Skip me button + reason dialog — host handover, skip list
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
             ├── modal.ts        # the form's view handler + the New/Edit buttons
@@ -82,7 +82,7 @@ tests/                          # mirrors the src/ path of what it covers
 ## Data rules
 
 - **Schema changes** → *append* a `CREATE TABLE`/`ALTER TABLE` string to the `migrations` array in
-  `store/database.ts`. Index = version; never edit an existing entry. Currently 9 entries.
+  `store/database.ts`. Index = version; never edit an existing entry. Currently 11 entries.
 - **DB access** → always via the memoized `stmt()` helper in `store/database.ts`. Never `db.prepare`
   at module top level: the tables don't exist until `initDb()` runs.
 - **Host rotation state is one column**: `reminder_hosts.lap_order` is a number while that person is
@@ -131,7 +131,7 @@ tests/                          # mirrors the src/ path of what it covers
   links"* used to be a third, but no command takes a person's name any more.
 - Slash-command replies use `respond()`, and so do **actions on an ephemeral reply** — a button in a
   `/bee-remind` reply carries a `response_url`, which is what lets `askFromRow` and the Approve/Reject
-  handlers reply at all. Actions on a *posted* message (the `Skip today` button) have no `response_url`
+  handlers reply at all. Actions on a *posted* message (the `Skip me` button) have no `response_url`
   — that path uses `client.chat.update` / `postEphemeral`.
 - **Confirm from a button with a fresh ephemeral, never `replace_original`**, or the list the button
   was clicked from is destroyed by its own confirmation.
@@ -142,10 +142,16 @@ tests/                          # mirrors the src/ path of what it covers
   the listener just executes it. Two writes are not idempotent: `setReminderMessage` resets
   `body_format` to `markdown`, silently reinterpreting a body captured from Slack, and `replaceHosts`
   re-plans the lap, redrawing an order people have already read off `show`.
-- **The Skip today button cannot be dismissed per-person, and that is not a bug.** A fired reminder is
+- **The Skip me button cannot hide or relabel per-person, and that is not a bug.** A fired reminder is
   one shared channel message, so `chat.update` rewrites it for everyone and Slack has no per-viewer
-  rendering. Removing the button after a click would break its second job: anyone marking themselves
-  out for the day, independently of the host's handover. The `🚪 Out today:` line is the confirmation.
+  rendering. Anything the button said after a click would be said to the whole channel, and hiding it
+  would break its second job: anyone declaring they're away, independently of the host's handover.
+  The `🔕 Skip:` line is the shared confirmation, and the dialog — reopening prefilled and retitled —
+  carries the per-person one, because it is the only surface rendered for one viewer.
+- **A skip reason lives in the thread, never on the post.** `reminder_skips.notice_ts` remembers the
+  reply so an edit rewrites it in place; without that, correcting a typo would stack a second reply
+  under the first. Reasons are typed into a `plain_text_input`, so escape `&<>` before they reach an
+  mrkdwn message or `<!channel>` in one pings the channel on every repost.
 - Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
   `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.

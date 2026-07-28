@@ -5,6 +5,7 @@ import type {
   NewFire,
   NewReminder,
   Reminder,
+  Skip,
 } from "../domain/types.js";
 import { stmt, transaction } from "./database.js";
 
@@ -26,6 +27,10 @@ const FIRE_COLUMNS = `id,
          fired_at     AS firedAt,
          host_user_id AS hostUserId,
          message_ts   AS messageTs`;
+
+const SKIP_COLUMNS = `user_id   AS userId,
+         reason,
+         notice_ts AS noticeTs`;
 
 const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
@@ -209,12 +214,33 @@ export function setFireHost(fireId: number, hostUserId: string | null): void {
   stmt("UPDATE reminder_fires SET host_user_id = ? WHERE id = ?").run(hostUserId, fireId);
 }
 
-/** False when this person was already down as out, so callers can say so. */
-export function addSkip(fireId: number, userId: string): boolean {
-  const result = stmt(
-    `INSERT OR IGNORE INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)`,
-  ).run(fireId, userId, new Date().toISOString());
-  return result.changes > 0;
+export function getSkip(fireId: number, userId: string): Skip | undefined {
+  return stmt(
+    `SELECT ${SKIP_COLUMNS} FROM reminder_skips WHERE fire_id = ? AND user_id = ?`,
+  ).get(fireId, userId) as unknown as Skip | undefined;
+}
+
+/**
+ * The row as it stood before this write, so callers can tell a new skip from a
+ * changed reason. `created_at` is left alone on conflict: it is what `listSkips`
+ * orders by, and editing a reason must not move you down a list people are reading.
+ */
+export function addSkip(fireId: number, userId: string, reason: string | null): Skip | undefined {
+  const previous = getSkip(fireId, userId);
+  stmt(
+    `INSERT INTO reminder_skips (fire_id, user_id, created_at, reason)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (fire_id, user_id) DO UPDATE SET reason = excluded.reason`,
+  ).run(fireId, userId, new Date().toISOString(), reason);
+  return previous;
+}
+
+export function setSkipNoticeTs(fireId: number, userId: string, ts: string | null): void {
+  stmt("UPDATE reminder_skips SET notice_ts = ? WHERE fire_id = ? AND user_id = ?").run(
+    ts,
+    fireId,
+    userId,
+  );
 }
 
 export function listSkips(fireId: number): string[] {

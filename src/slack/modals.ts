@@ -5,7 +5,7 @@ import { DAY_NAMES, EVERY_DAY, WEEKDAYS, daysColumn, daysToSelection, isEveryDay
 import { fail, ok, type Parsed } from "../domain/result.js";
 import { sameRoster } from "../domain/rotation.js";
 import { cadenceFitsDays } from "../domain/schedule.js";
-import type { Host, Reminder } from "../domain/types.js";
+import type { Host, Reminder, Skip } from "../domain/types.js";
 
 export const REMINDER_FORM = "remind_form";
 
@@ -201,7 +201,7 @@ export interface FormFields {
 }
 
 /** Every input block uses the action id `value`, so each field is one lookup. */
-type Values = Record<string, Record<string, ViewStateValue>>;
+export type Values = Record<string, Record<string, ViewStateValue>>;
 
 export function readSubmission(values: Values): FormFields {
   const field = (block: string): ViewStateValue | undefined => values[block]?.value;
@@ -291,4 +291,55 @@ export function validate(
 
   if (!at.ok || Object.keys(errors).length > 0) return { errors };
   return { at: at.value, days: days.value };
+}
+
+export const SKIP_FORM = "reminder_skip_form";
+
+/**
+ * A view submission does not carry the message it came from, so the post to
+ * update and reply under rides here.
+ */
+export interface SkipSource {
+  channelId: string;
+  messageTs: string;
+}
+
+/** Slack enforces this client-side, which is why nothing re-checks it on submit. */
+const MAX_REASON_LENGTH = 200;
+
+/**
+ * One shared post means a button cannot hide for just the person who clicked, so
+ * this dialog is where they learn they are already down as skipping.
+ */
+export function skipModal(source: SkipSource, existing?: Skip): View {
+  return {
+    type: "modal",
+    callback_id: SKIP_FORM,
+    private_metadata: JSON.stringify(source),
+    title: { type: "plain_text", text: existing ? "You're skipping" : "Skip me" },
+    submit: { type: "plain_text", text: existing ? "Save" : "Skip" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "reason",
+        optional: true,
+        label: { type: "plain_text", text: "Reason" },
+        hint: { type: "plain_text", text: "Optional, and posted in the thread." },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          max_length: MAX_REASON_LENGTH,
+          placeholder: { type: "plain_text", text: "sick, back tomorrow" },
+          // Slack rejects an empty initial_value, so no reason means no key at all.
+          ...(existing?.reason ? { initial_value: existing.reason } : {}),
+        },
+      },
+    ],
+  };
+}
+
+/** Undefined for a box left empty, which is a valid submission. */
+export function readSkipReason(values: Values): string | undefined {
+  return values.reason?.value?.value?.trim() || undefined;
 }

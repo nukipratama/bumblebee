@@ -14,6 +14,7 @@ const {
   getHoliday,
   getReminder,
   getReminderById,
+  getSkip,
   insertHoliday,
   insertReminder,
   lastHostedOn,
@@ -28,6 +29,7 @@ const {
   setFireHost,
   setLap,
   setReminderMessage,
+  setSkipNoticeTs,
 } = await import("../../src/store/reminders.js");
 
 initDb();
@@ -238,15 +240,59 @@ describe("skips", () => {
     return getFireByMessageTs("444.4")!.id;
   }
 
-  it("reports false when someone is already down as out", () => {
+  it("hands back the row as it stood before the write, so a first skip is undefined", () => {
     const fireId = fireWithSkips();
 
-    assert.equal(addSkip(fireId, "U_A"), true);
-    assert.equal(addSkip(fireId, "U_A"), false);
+    assert.equal(addSkip(fireId, "U_A", "sick"), undefined);
+    assert.deepEqual(plain(addSkip(fireId, "U_A", "on leave")!), {
+      userId: "U_A",
+      reason: "sick",
+      noticeTs: null,
+    });
     assert.deepEqual(listSkips(fireId), ["U_A"]);
   });
 
-  it("orders by when someone marked themselves out", () => {
+  it("overwrites a reason, and clears it when given null", () => {
+    const fireId = fireWithSkips();
+
+    addSkip(fireId, "U_A", "sick");
+    addSkip(fireId, "U_A", "on leave");
+    assert.equal(getSkip(fireId, "U_A")?.reason, "on leave");
+
+    addSkip(fireId, "U_A", null);
+    assert.equal(getSkip(fireId, "U_A")?.reason, null);
+  });
+
+  it("round-trips the notice timestamp and clears it", () => {
+    const fireId = fireWithSkips();
+    addSkip(fireId, "U_A", "sick");
+
+    setSkipNoticeTs(fireId, "U_A", "1700000001.0002");
+    assert.equal(getSkip(fireId, "U_A")?.noticeTs, "1700000001.0002");
+
+    setSkipNoticeTs(fireId, "U_A", null);
+    assert.equal(getSkip(fireId, "U_A")?.noticeTs, null);
+  });
+
+  it("keeps your place in the list when you only edit the reason", () => {
+    const fireId = fireWithSkips();
+    stmt("INSERT INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)").run(
+      fireId,
+      "U_A",
+      "2026-07-27T09:00:00.000Z",
+    );
+    stmt("INSERT INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)").run(
+      fireId,
+      "U_B",
+      "2026-07-27T09:05:00.000Z",
+    );
+
+    addSkip(fireId, "U_A", "changed my mind");
+
+    assert.deepEqual(listSkips(fireId), ["U_A", "U_B"]);
+  });
+
+  it("orders by when someone skipped", () => {
     const fireId = fireWithSkips();
     stmt("INSERT INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)").run(
       fireId,
