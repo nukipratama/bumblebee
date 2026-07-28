@@ -1,12 +1,12 @@
 import type { App } from "@slack/bolt";
-import { registerCommand } from "./command.js";
 import { registerMention } from "./mention.js";
-import { registerRemind } from "./remind.js";
+import { registerRemind } from "./remind/index.js";
 import { registerShortcut } from "./shortcut.js";
 import { registerSkip } from "./skip.js";
+import { registerStatus } from "./status.js";
 
-export function register(app: App): void {
-  registerCommand(app);
+export function registerListeners(app: App): void {
+  registerStatus(app);
   registerMention(app);
   registerRemind(app);
   registerShortcut(app);

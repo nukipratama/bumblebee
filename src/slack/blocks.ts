@@ -1,9 +1,10 @@
 import type { KnownBlock } from "@slack/web-api";
-import type { BodyFormat } from "../db/reminders.js";
+import type { BodyFormat } from "../domain/types.js";
 
 export const SKIP_ACTION = "reminder_skip";
+export const APPROVE_ACTION = "remind_approve";
+export const REJECT_ACTION = "remind_reject";
 
-/** Everything a reminder post shows, at any point in its life. */
 export interface ReminderPost {
   body: string;
   bodyFormat: BodyFormat;
@@ -15,22 +16,14 @@ export interface ReminderPost {
 
 const mention = (userId: string): string => `<@${userId}>`;
 
-/**
- * The two markup flavours read the same characters differently — `*word*` is
- * italic in Markdown and bold in mrkdwn — so each body goes through the block
- * that reads it as written. Never convert between them.
- */
+/** Each dialect goes through the block that reads it as written. Never convert. */
 function bodyBlock(post: ReminderPost): KnownBlock {
   return post.bodyFormat === "mrkdwn"
     ? { type: "section", text: { type: "mrkdwn", text: post.body } }
     : { type: "markdown", text: post.body };
 }
 
-/**
- * The whole post, rebuilt from scratch every time. `chat.update` replaces blocks
- * wholesale, so a skip re-renders rather than patching — which is what stops the
- * post drifting into a shape only one code path knows how to produce.
- */
+/** Rebuilt from scratch every time, because `chat.update` replaces blocks wholesale. */
 export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const blocks: KnownBlock[] = [bodyBlock(post)];
 
@@ -66,11 +59,33 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   return blocks;
 }
 
-/**
- * Notification and accessibility text. Blocks alone leave a message showing as
- * "This content can't be displayed" in notifications and to screen readers.
- */
+/** Without this a blocks-only message reads as "This content can't be displayed". */
 export function fallbackText(post: ReminderPost): string {
   const host = post.host ? ` — host ${mention(post.host)}` : "";
   return `${post.body}${host}`;
+}
+
+export function confirmBlocks(summary: string, pendingId: string): KnownBlock[] {
+  return [
+    { type: "section", text: { type: "mrkdwn", text: summary } },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          action_id: APPROVE_ACTION,
+          style: "primary",
+          text: { type: "plain_text", text: "Approve" },
+          value: pendingId,
+        },
+        {
+          type: "button",
+          action_id: REJECT_ACTION,
+          style: "danger",
+          text: { type: "plain_text", text: "Reject" },
+          value: pendingId,
+        },
+      ],
+    },
+  ];
 }

@@ -1,20 +1,16 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { config } from "../config.js";
 
-// DatabaseSync won't create a missing parent directory, so ensure it exists
-// before opening (matters for the default local `./data/` path).
+// DatabaseSync will not create a missing parent directory.
 mkdirSync(dirname(config.dbPath), { recursive: true });
 
-export const db = new DatabaseSync(config.dbPath);
+const db = new DatabaseSync(config.dbPath);
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA foreign_keys = ON");
 
-// Ordered, append-only schema migrations. Each entry's index is its version;
-// on start we apply every migration past the DB's current `user_version` and
-// bump it. Add new features by appending a statement here — never edit an
-// existing one.
+// Append-only: each entry's index is its version. Never edit an existing one.
 const migrations: string[] = [
   `CREATE TABLE ai_usage (
      id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,9 +42,9 @@ const migrations: string[] = [
      added_in_channel TEXT NOT NULL,
      added_at         TEXT NOT NULL
    )`,
-  // A host is pending this lap while lap_order is a number, and has already
-  // hosted once it is NULL. Up next is the lowest number; the lap is over when
-  // no row has one.
+  // lap_order is a number while that person is pending this lap and NULL once
+  // they have hosted it. Up next is the lowest number; the lap is over when no
+  // row has one. No pointer column, so there is no "current host" to drift.
   `CREATE TABLE reminder_hosts (
      reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
      user_id     TEXT    NOT NULL,
@@ -62,10 +58,6 @@ const migrations: string[] = [
      host_user_id TEXT,
      message_ts   TEXT
    )`,
-  // Which flavour of markup `message` is written in. Slash-command messages are
-  // standard Markdown; ones captured from a Slack message are mrkdwn, where the
-  // same asterisks mean something else. Stored so each is rendered through the
-  // matching block type rather than converted.
   `ALTER TABLE reminders
      ADD COLUMN body_format TEXT NOT NULL DEFAULT 'markdown'
      CHECK (body_format IN ('markdown', 'mrkdwn'))`,
@@ -76,12 +68,9 @@ const migrations: string[] = [
      PRIMARY KEY (fire_id, user_id)
    )`,
   // fired_on is only a date, but the handover window is measured in minutes.
-  // Null on rows written before this column existed, which reads as "too old to
-  // hand over" — the right answer for a fire that already happened.
   `ALTER TABLE reminder_fires ADD COLUMN fired_at TEXT`,
 ];
 
-/** Apply any pending schema migrations. Idempotent; safe to call on every boot. */
 export function initDb(): void {
   const { user_version: current } = db.prepare("PRAGMA user_version").get() as {
     user_version: number;
@@ -90,5 +79,28 @@ export function initDb(): void {
     db.exec(migrations[version]!);
     // user_version takes a literal, not a bound parameter.
     db.exec(`PRAGMA user_version = ${version + 1}`);
+  }
+}
+
+// Prepared lazily, because no table exists until initDb() has run.
+const prepared = new Map<string, StatementSync>();
+
+export function stmt(sql: string): StatementSync {
+  let statement = prepared.get(sql);
+  if (!statement) {
+    statement = db.prepare(sql);
+    prepared.set(sql, statement);
+  }
+  return statement;
+}
+
+export function transaction(work: () => void): void {
+  db.exec("BEGIN");
+  try {
+    work();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }

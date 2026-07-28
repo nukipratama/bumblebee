@@ -16,7 +16,6 @@ function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
 const typeOf = (blocks: ReturnType<typeof reminderBlocks>): string[] =>
   blocks.map((block) => block.type);
 
-/** The context line, which carries both the host and the out-today list. */
 function contextText(blocks: ReturnType<typeof reminderBlocks>): string | undefined {
   const block = blocks.find((candidate) => candidate.type === "context");
   if (!block || block.type !== "context") return undefined;

@@ -1,15 +1,22 @@
 import type { App, MessageShortcut, ViewStateValue } from "@slack/bolt";
 import type { KnownBlock, View, WebClient } from "@slack/web-api";
-import { getReminder, insertReminder, listHosts, listReminders, replaceHosts } from "../db/reminders.js";
-import { planLap } from "../scheduler/rotation.js";
-import { DAY_ORDER, daysFromSelection, suggestCode } from "./args.js";
-import { cadenceFitsDays, formatSchedule } from "./remind.js";
+import { CODE_RULE, isReminderCode, suggestCode } from "../../domain/code.js";
+import { DAY_NAMES, WEEKDAYS } from "../../domain/days.js";
+import { planLap } from "../../domain/rotation.js";
+import { cadenceFitsDays } from "../../domain/schedule.js";
+import {
+  getReminder,
+  insertReminder,
+  listHosts,
+  listReminders,
+  replaceHosts,
+} from "../../store/reminders.js";
+import { daysFromSelection } from "../args.js";
+import { formatSchedule } from "../text.js";
 
 export const REMIND_FROM_MESSAGE = "remind_from_message";
 
-const CODE_PATTERN = /^[a-z0-9-]+$/;
 const DEFAULT_TIME = "09:00";
-const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
 /** Which message this dialog was opened from. Kept small — the field caps at 3000 characters. */
 interface Source {
@@ -59,7 +66,7 @@ function modalBlocks(suggestedCode: string): KnownBlock[] {
       element: {
         type: "checkboxes",
         action_id: "value",
-        options: DAY_ORDER.map(dayOption),
+        options: DAY_NAMES.map(dayOption),
         initial_options: WEEKDAYS.map(dayOption),
       },
     },
@@ -124,9 +131,8 @@ function readSubmission(values: Values): Submission {
 }
 
 /**
- * Everything checked before the reminder is written, keyed by block so Slack can
- * mark the offending field rather than replacing the dialog with a message. All
- * of it is local — a `view_submission` must be acked within three seconds.
+ * Keyed by block so Slack marks the offending field rather than replacing the
+ * dialog. All local — a `view_submission` must be acked within three seconds.
  */
 function validate(
   submission: Submission,
@@ -134,8 +140,8 @@ function validate(
 ): { errors: Record<string, string> } | { days: string } {
   const errors: Record<string, string> = {};
 
-  if (!CODE_PATTERN.test(submission.code)) {
-    errors.code = "Lowercase letters, numbers and dashes only — like `standup`.";
+  if (!isReminderCode(submission.code)) {
+    errors.code = `Use ${CODE_RULE} only — like \`standup\`.`;
   } else if (getReminder(channelId, submission.code)) {
     errors.code = `\`${submission.code}\` already exists in this channel.`;
   }
@@ -152,7 +158,7 @@ function validate(
   return Object.keys(errors).length > 0 ? { errors } : { days: days.value };
 }
 
-/** The message the shortcut pointed at, re-read so an edit made meanwhile is picked up. */
+/** Re-read so an edit made since the shortcut was clicked is picked up. */
 async function readSourceMessage(client: WebClient, source: Source): Promise<string | undefined> {
   const history = await client.conversations.history({
     channel: source.channelId,
@@ -165,40 +171,36 @@ async function readSourceMessage(client: WebClient, source: Source): Promise<str
 }
 
 export function registerShortcut(app: App): void {
-  app.shortcut<MessageShortcut>(
-    REMIND_FROM_MESSAGE,
-    async ({ ack, shortcut, client, logger }) => {
-      await ack();
-      try {
-        const channelId = shortcut.channel.id;
-        const userId = shortcut.user.id;
+  app.shortcut<MessageShortcut>(REMIND_FROM_MESSAGE, async ({ ack, shortcut, client, logger }) => {
+    await ack();
+    try {
+      const channelId = shortcut.channel.id;
+      const userId = shortcut.user.id;
 
-        const complain = (text: string) =>
-          client.chat.postEphemeral({ channel: channelId, user: userId, text });
+      const complain = (text: string) =>
+        client.chat.postEphemeral({ channel: channelId, user: userId, text });
 
-        if (channelId.startsWith("D")) {
-          await complain("Reminders belong to a channel — try this on a message in one.");
-          return;
-        }
-        if (!shortcut.message.text?.trim()) {
-          await complain("That message has no text I can turn into a reminder.");
-          return;
-        }
-
-        const taken = new Set(listReminders(channelId).map((reminder) => reminder.code));
-        const source: Source = { channelId, messageTs: shortcut.message_ts };
-
-        // trigger_id expires in about three seconds, so nothing slow happens
-        // before this — the suggestion above is one local query.
-        await client.views.open({
-          trigger_id: shortcut.trigger_id,
-          view: modal(source, suggestCode(shortcut.message.text, taken)),
-        });
-      } catch (error) {
-        logger.error("remind-from-message shortcut failed", error);
+      if (channelId.startsWith("D")) {
+        await complain("Reminders belong to a channel — try this on a message in one.");
+        return;
       }
-    },
-  );
+      if (!shortcut.message.text?.trim()) {
+        await complain("That message has no text I can turn into a reminder.");
+        return;
+      }
+
+      const taken = new Set(listReminders(channelId).map((reminder) => reminder.code));
+      const source: Source = { channelId, messageTs: shortcut.message_ts };
+
+      // trigger_id expires in about three seconds, so nothing slow happens first.
+      await client.views.open({
+        trigger_id: shortcut.trigger_id,
+        view: modal(source, suggestCode(shortcut.message.text, taken)),
+      });
+    } catch (error) {
+      logger.error("remind-from-message shortcut failed", error);
+    }
+  });
 
   app.view(REMIND_FROM_MESSAGE, async ({ ack, body, view, client, logger }) => {
     const source = JSON.parse(view.private_metadata) as Source;
@@ -236,7 +238,6 @@ export function registerShortcut(app: App): void {
         at: submission.at,
         days: checked.days,
         message,
-        // Captured from Slack, so mrkdwn — never rendered as Markdown.
         bodyFormat: "mrkdwn",
         everyNWeeks: submission.everyNWeeks,
         createdBy: userId,
@@ -247,8 +248,7 @@ export function registerShortcut(app: App): void {
         replaceHosts(created.id, submission.hosts, planLap(listHosts(created.id), submission.hosts));
       }
 
-      const rotation =
-        submission.hosts.length > 0 ? ` · ${submission.hosts.length} hosts` : "";
+      const rotation = submission.hosts.length > 0 ? ` · ${submission.hosts.length} hosts` : "";
       await client.chat.postMessage({
         channel: source.channelId,
         text: `<@${userId}> added reminder \`${created.code}\` — ${formatSchedule(created)}${rotation}`,

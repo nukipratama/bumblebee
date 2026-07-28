@@ -1,100 +1,12 @@
-import type { StatementSync } from "node:sqlite";
-import { db } from "./index.js";
-
-/**
- * Which markup flavour `message` is written in. Slash-command messages are
- * standard Markdown; ones captured from a Slack message are mrkdwn, where the
- * same asterisks mean something else. Each is rendered through the block type
- * that reads it correctly, never converted.
- */
-export type BodyFormat = "markdown" | "mrkdwn";
-
-export interface Reminder {
-  id: number;
-  channelId: string;
-  code: string;
-  at: string;
-  days: string;
-  message: string;
-  bodyFormat: BodyFormat;
-  everyNWeeks: number;
-  enabled: boolean;
-  lastFiredAt: string | null;
-  createdBy: string;
-  createdAt: string;
-}
-
-export interface NewReminder {
-  channelId: string;
-  code: string;
-  at: string;
-  days: string;
-  message: string;
-  bodyFormat: BodyFormat;
-  everyNWeeks: number;
-  createdBy: string;
-}
-
-export interface Holiday {
-  date: string;
-  addedBy: string;
-  addedInChannel: string;
-  addedAt: string;
-}
-
-/**
- * A roster member. `lapOrder` is their place in the current lap, or null once
- * they've hosted it. Structurally a `LapMember`, deliberately declared here
- * rather than imported: `rotation.ts` states the minimal shape its pure
- * functions need, and shouldn't grow a field because this row gained a column.
- */
-export interface Host {
-  userId: string;
-  lapOrder: number | null;
-}
-
-export interface FireRecord {
-  reminderId: number;
-  firedOn: string;
-  firedAt: Date;
-  hostUserId: string | null;
-  messageTs: string | null;
-  nextLap: readonly string[];
-}
-
-/** One occurrence of a reminder, as located by the message the skip button sits on. */
-export interface Fire {
-  id: number;
-  reminderId: number;
-  firedOn: string;
-  firedAt: string;
-  hostUserId: string | null;
-  messageTs: string | null;
-}
-
-// Statements are prepared lazily (memoized) rather than at module load, because
-// the tables don't exist until initDb() runs its migrations at startup.
-const statements = new Map<string, StatementSync>();
-
-function stmt(sql: string): StatementSync {
-  let prepared = statements.get(sql);
-  if (!prepared) {
-    prepared = db.prepare(sql);
-    statements.set(sql, prepared);
-  }
-  return prepared;
-}
-
-function transaction(work: () => void): void {
-  db.exec("BEGIN");
-  try {
-    work();
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
+import type {
+  Fire,
+  Holiday,
+  Host,
+  NewFire,
+  NewReminder,
+  Reminder,
+} from "../domain/types.js";
+import { stmt, transaction } from "./database.js";
 
 const REMINDER_COLUMNS = `id,
          channel_id    AS channelId,
@@ -150,7 +62,6 @@ export function getReminder(channelId: string, code: string): Reminder | undefin
   return row && toReminder(row);
 }
 
-/** By id, because a skip button knows its fire but not the channel's code. */
 export function getReminderById(id: number): Reminder | undefined {
   const row = stmt(`SELECT ${REMINDER_COLUMNS} FROM reminders WHERE id = ?`).get(id) as unknown as
     | ReminderRow
@@ -177,18 +88,10 @@ export function setReminderAt(channelId: string, code: string, at: string): void
 }
 
 export function setReminderDays(channelId: string, code: string, days: string): void {
-  stmt("UPDATE reminders SET days = ? WHERE channel_id = ? AND code = ?").run(
-    days,
-    channelId,
-    code,
-  );
+  stmt("UPDATE reminders SET days = ? WHERE channel_id = ? AND code = ?").run(days, channelId, code);
 }
 
-/**
- * Also resets `body_format`, because `edit --message` always supplies Markdown.
- * Leaving a captured row flagged `mrkdwn` would render the new text through the
- * wrong block.
- */
+/** Resets body_format too: `edit --message` always supplies Markdown. */
 export function setReminderMessage(channelId: string, code: string, message: string): void {
   stmt(
     "UPDATE reminders SET message = ?, body_format = 'markdown' WHERE channel_id = ? AND code = ?",
@@ -216,29 +119,26 @@ export function deleteReminder(channelId: string, code: string): void {
 }
 
 /**
- * Everything a successful post writes: the fire stamp, the history row, and the
- * advanced lap. One transaction, because a crash between them would record a
- * post whose host is still up next tomorrow.
- *
- * Stamps the time from JS, never SQLite — see the last_fired_at gotcha.
+ * One transaction: a crash between these would record a post whose host is still
+ * up next tomorrow. Stamps the time from JS, never SQLite.
  */
-export function recordFire(record: FireRecord): void {
+export function recordFire(fire: NewFire): void {
   transaction(() => {
     stmt("UPDATE reminders SET last_fired_at = ? WHERE id = ?").run(
-      record.firedAt.toISOString(),
-      record.reminderId,
+      fire.firedAt.toISOString(),
+      fire.reminderId,
     );
     stmt(
       `INSERT INTO reminder_fires (reminder_id, fired_on, fired_at, host_user_id, message_ts)
        VALUES (?, ?, ?, ?, ?)`,
     ).run(
-      record.reminderId,
-      record.firedOn,
-      record.firedAt.toISOString(),
-      record.hostUserId,
-      record.messageTs,
+      fire.reminderId,
+      fire.firedOn,
+      fire.firedAt.toISOString(),
+      fire.hostUserId,
+      fire.messageTs,
     );
-    writeLap(record.reminderId, record.nextLap);
+    writeLap(fire.reminderId, fire.nextLap);
   });
 }
 
@@ -252,9 +152,12 @@ export function countReminders(channelId: string): { enabled: number; paused: nu
 }
 
 export function insertHoliday(holiday: Omit<Holiday, "addedAt">): void {
-  stmt(
-    `INSERT INTO holidays (date, added_by, added_in_channel, added_at) VALUES (?, ?, ?, ?)`,
-  ).run(holiday.date, holiday.addedBy, holiday.addedInChannel, new Date().toISOString());
+  stmt(`INSERT INTO holidays (date, added_by, added_in_channel, added_at) VALUES (?, ?, ?, ?)`).run(
+    holiday.date,
+    holiday.addedBy,
+    holiday.addedInChannel,
+    new Date().toISOString(),
+  );
 }
 
 export function getHoliday(date: string): Holiday | undefined {
@@ -276,7 +179,7 @@ export function deleteHoliday(date: string): void {
   stmt("DELETE FROM holidays WHERE date = ?").run(date);
 }
 
-/** Roster rows for a reminder: those who have hosted this lap first, then the pending lap in order. */
+/** Hosted-first, then the pending lap in order — the shape `pendingLap` expects. */
 export function listHosts(reminderId: number): Host[] {
   return stmt(
     `SELECT user_id AS userId, lap_order AS lapOrder
@@ -298,11 +201,7 @@ export function setLap(reminderId: number, lap: readonly string[]): void {
   transaction(() => writeLap(reminderId, lap));
 }
 
-/**
- * Replace the roster. Anyone in `userIds` but absent from `lap` is recorded as
- * having already hosted this lap — which is how `host set` avoids handing
- * someone a second turn. Callers build `lap` with `planLap`.
- */
+/** Anyone in `userIds` but absent from `lap` is recorded as having already hosted it. */
 export function replaceHosts(
   reminderId: number,
   userIds: readonly string[],
@@ -324,19 +223,17 @@ export function clearHosts(reminderId: number): void {
   stmt("DELETE FROM reminder_hosts WHERE reminder_id = ?").run(reminderId);
 }
 
-/** The occurrence a skip button belongs to. Undefined for any other message. */
 export function getFireByMessageTs(messageTs: string): Fire | undefined {
   return stmt(`SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE message_ts = ?`).get(
     messageTs,
   ) as unknown as Fire | undefined;
 }
 
-/** Records who actually hosted, after a handover replaces whoever was named. */
 export function setFireHost(fireId: number, hostUserId: string): void {
   stmt("UPDATE reminder_fires SET host_user_id = ? WHERE id = ?").run(hostUserId, fireId);
 }
 
-/** Returns false when this person was already down as out, so callers can say so. */
+/** False when this person was already down as out, so callers can say so. */
 export function addSkip(fireId: number, userId: string): boolean {
   const result = stmt(
     `INSERT OR IGNORE INTO reminder_skips (fire_id, user_id, created_at) VALUES (?, ?, ?)`,
@@ -344,7 +241,6 @@ export function addSkip(fireId: number, userId: string): boolean {
   return result.changes > 0;
 }
 
-/** Who is out of this occurrence, oldest first, which is the order the post lists them. */
 export function listSkips(fireId: number): string[] {
   const rows = stmt(
     "SELECT user_id AS userId FROM reminder_skips WHERE fire_id = ? ORDER BY created_at, user_id",
@@ -352,7 +248,6 @@ export function listSkips(fireId: number): string[] {
   return rows.map((row) => row.userId);
 }
 
-/** Most recent hosting date per user, which is what dates the ✓ rows in `show`. */
 export function lastHostedOn(reminderId: number): Map<string, string> {
   const rows = stmt(
     `SELECT host_user_id AS userId, MAX(fired_on) AS firedOn

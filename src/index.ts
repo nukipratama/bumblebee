@@ -1,8 +1,8 @@
 import { App } from "@slack/bolt";
+import { startScheduler } from "./app/scheduler.js";
 import { config } from "./config.js";
-import { initDb } from "./db/index.js";
-import { register } from "./listeners/index.js";
-import { startScheduler } from "./scheduler/index.js";
+import { registerListeners } from "./slack/listeners/index.js";
+import { initDb } from "./store/database.js";
 
 const app = new App({
   token: config.slackBotToken,
@@ -11,7 +11,7 @@ const app = new App({
   logLevel: config.logLevel,
 });
 
-register(app);
+registerListeners(app);
 
 async function main(): Promise<void> {
   initDb();

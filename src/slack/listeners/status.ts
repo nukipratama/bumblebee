@@ -1,20 +1,16 @@
 import type { App } from "@slack/bolt";
-import { getAiUsageSummary } from "../db/ai-usage.js";
-import { countReminders, listHolidayDates, listReminders } from "../db/reminders.js";
-import { localParts } from "../scheduler/clock.js";
-import { getLastTickAt } from "../scheduler/index.js";
-import { nextFire } from "../scheduler/next.js";
+import { getLastTickAt } from "../../app/scheduler.js";
+import { localParts } from "../../domain/clock.js";
+import { nextFire } from "../../domain/schedule.js";
+import { getAiUsageSummary } from "../../store/ai-usage.js";
+import { countReminders, listHolidayDates, listReminders } from "../../store/reminders.js";
 
 const STATUS_LINE = "🐝 Bumblebee is online and reporting for duty. Roll out! ⚡️";
 
-/** Format the AI-usage summary as a Slack markdown block. */
 function formatUsage(): string {
-  const { requests, promptTokens, completionTokens, totalTokens, since } =
-    getAiUsageSummary();
+  const { requests, promptTokens, completionTokens, totalTokens, since } = getAiUsageSummary();
 
-  if (requests === 0) {
-    return "*AI usage:* no requests recorded yet.";
-  }
+  if (requests === 0) return "*AI usage:* no requests recorded yet.";
 
   return [
     "*AI usage*",
@@ -24,12 +20,9 @@ function formatUsage(): string {
   ].join("\n");
 }
 
-/** Format this channel's reminder state, so "is the scheduler alive?" has an answer. */
 function formatReminders(channelId: string): string {
   const { enabled, paused } = countReminders(channelId);
-  if (enabled + paused === 0) {
-    return "*Reminders:* none in this channel yet.";
-  }
+  if (enabled + paused === 0) return "*Reminders:* none in this channel yet.";
 
   const holidays = listHolidayDates();
   const now = new Date();
@@ -39,22 +32,20 @@ function formatReminders(channelId: string): string {
     .filter((candidate) => candidate.next !== null)
     .sort((a, b) => a.next!.getTime() - b.next!.getTime())[0];
 
-  const lastTickAt = getLastTickAt();
-  const lines = [
-    "*Reminders (this channel)*",
-    `• ${enabled} enabled, ${paused} paused`,
-  ];
+  const lines = ["*Reminders (this channel)*", `• ${enabled} enabled, ${paused} paused`];
 
   if (upcoming) {
     const { date, time } = localParts(upcoming.next!);
     lines.push(`• next: \`${upcoming.reminder.code}\` at ${time} on ${date}`);
   }
+
+  const lastTickAt = getLastTickAt();
   lines.push(`• last tick: ${lastTickAt ? localParts(lastTickAt).time : "not yet"}`);
 
   return lines.join("\n");
 }
 
-export function registerCommand(app: App): void {
+export function registerStatus(app: App): void {
   app.command("/bee-status", async ({ ack, command, respond, logger }) => {
     await ack();
     let body = STATUS_LINE;

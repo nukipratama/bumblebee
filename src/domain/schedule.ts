@@ -1,17 +1,18 @@
-import type { Reminder } from "../db/reminders.js";
 import { daysBetween, localParts, type WallClock } from "./clock.js";
+import { dayMatches, isSingleDay } from "./days.js";
+import { fail, ok, type Parsed } from "./result.js";
+import type { Reminder } from "./types.js";
 
 const EVERY_WEEK = 1;
 const DAYS_PER_WEEK = 7;
 const SEARCH_LIMIT_DAYS = 28;
-const EVERY_DAY = "*";
 
-export function dayMatches(reminder: Reminder, day: string): boolean {
-  return reminder.days === EVERY_DAY || reminder.days.split(",").includes(day);
+export function formatCadence(everyNWeeks: number): string {
+  return everyNWeeks === EVERY_WEEK ? "every week" : `every ${everyNWeeks} weeks`;
 }
 
 export function matches(reminder: Reminder, now: Pick<WallClock, "time" | "day">): boolean {
-  return reminder.at === now.time && dayMatches(reminder, now.day);
+  return reminder.at === now.time && dayMatches(reminder.days, now.day);
 }
 
 export function requiredDaysSinceLastFire(everyNWeeks: number): number {
@@ -23,6 +24,15 @@ export function cadenceOk(reminder: Reminder, date: string): boolean {
 
   const lastFiredDate = localParts(new Date(reminder.lastFiredAt)).date;
   return daysBetween(lastFiredDate, date) >= requiredDaysSinceLastFire(reminder.everyNWeeks);
+}
+
+export function cadenceFitsDays(everyNWeeks: number, days: string): Parsed<true> {
+  if (everyNWeeks === EVERY_WEEK || isSingleDay(days)) return ok(true);
+
+  return fail(
+    `${formatCadence(everyNWeeks)} needs exactly one day in \`--on\` — the gap is measured ` +
+      "in days, so several days would post once per cycle rather than on each day",
+  );
 }
 
 function atTimeOnDay(from: Date, dayOffset: number, at: string): Date {
@@ -43,7 +53,7 @@ export function nextFire(
     if (candidate <= from) continue;
 
     const { day, date } = localParts(candidate);
-    if (!dayMatches(reminder, day)) continue;
+    if (!dayMatches(reminder.days, day)) continue;
     if (isHoliday(date)) continue;
     if (!cadenceOk(reminder, date)) continue;
 

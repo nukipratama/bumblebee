@@ -1,5 +1,7 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
+import { drawLapAvoiding, pendingLap } from "../../domain/rotation.js";
+import type { Fire, Reminder } from "../../domain/types.js";
 import {
   addSkip,
   getFireByMessageTs,
@@ -8,38 +10,27 @@ import {
   listSkips,
   setFireHost,
   setLap,
-  type Fire,
-  type Reminder,
-} from "../db/reminders.js";
-import { fallbackText, reminderBlocks, SKIP_ACTION } from "../scheduler/blocks.js";
-import { drawLapAvoiding, pendingLap } from "../scheduler/rotation.js";
+} from "../../store/reminders.js";
+import { SKIP_ACTION, fallbackText, reminderBlocks } from "../blocks.js";
 
 /**
- * How long after a reminder fires the host may hand over. Past this the meeting
- * has effectively happened, and rewriting who was responsible revises history.
- * Attendance has no such limit — it changes nothing anyone acted on.
+ * Past this the meeting has effectively happened, and rewriting who was
+ * responsible revises history. Attendance has no such limit — it changes nothing
+ * anyone acted on.
  */
 const HANDOVER_WINDOW_MS = 30 * 60_000;
 
 interface SkipOutcome {
-  /** Told only to the clicker; absent when the post itself carries the news. */
   ephemeral?: string;
-  /** Posted in the reminder's thread, so the channel sees a handover. */
   thread?: string;
 }
 
 function handoverOpen(fire: Fire, now: number): boolean {
-  // Null on rows written before fired_at existed — too old to hand over, which
-  // is the right answer for a fire that already happened.
+  // Null on rows written before fired_at existed, which reads as too old to hand over.
   if (!fire.firedAt) return false;
   return now - new Date(fire.firedAt).getTime() <= HANDOVER_WINDOW_MS;
 }
 
-/**
- * The clicker is the named host: someone else takes today, and the clicker goes
- * back into the pending lap rather than being marked hosted — a skip must never
- * cost a turn.
- */
 function handOver(fire: Fire, reminder: Reminder, clicker: string): SkipOutcome {
   const roster = listHosts(reminder.id);
   const rosterIds = roster.map((member) => member.userId);
@@ -49,14 +40,12 @@ function handOver(fire: Fire, reminder: Reminder, clicker: string): SkipOutcome 
     return { ephemeral: `You're the only person on \`${reminder.code}\` — nobody to hand over to.` };
   }
 
-  // An empty pending lap means this fire closed it, so a fresh one is drawn
-  // with the clicker kept off the front.
+  // An empty pending lap means this fire closed it, so a fresh one is drawn.
   const next = lap.length > 0 ? lap : drawLapAvoiding(rosterIds, clicker);
   const replacement = next[0]!;
 
-  // The replacement hosts now, so they leave the pending lap; the clicker
-  // rejoins it at the back, which is what keeps their turn. The filter matters
-  // when the lap was just redrawn and already contains them.
+  // The clicker rejoins at the back, which is what keeps their turn. The filter
+  // matters when the lap was just redrawn and already contains them.
   const remaining = next.slice(1).filter((userId) => userId !== clicker);
 
   setFireHost(fire.id, replacement);
@@ -82,7 +71,6 @@ function applySkip(fire: Fire, reminder: Reminder, clicker: string, now: number)
     : { ephemeral: `You're already down as out of \`${reminder.code}\` today.` };
 }
 
-/** Rebuilds the post from current state; `chat.update` replaces blocks wholesale. */
 async function repost(
   client: WebClient,
   fire: Fire,

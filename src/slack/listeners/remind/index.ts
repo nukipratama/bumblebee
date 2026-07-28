@@ -1,0 +1,172 @@
+import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
+import { APPROVE_ACTION, REJECT_ACTION, confirmBlocks } from "../../blocks.js";
+import { CADENCE_FLAGS, parseArgs, type FlagSpec } from "../../args.js";
+import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
+import { formatSchedule } from "../../text.js";
+import { applyAction } from "./apply.js";
+import { unwrap, type CommandContext } from "./context.js";
+import { HELP_TEXT } from "./help.js";
+import { handleHoliday } from "./holidays.js";
+import { handleHost } from "./hosts.js";
+import {
+  handleAdd,
+  handleEdit,
+  handleForExisting,
+  handleList,
+  handleShow,
+} from "./reminders.js";
+
+const FLAG_SPEC: FlagSpec = {
+  withValue: ["at", "on", "message"],
+  boolean: [...CADENCE_FLAGS.keys()],
+};
+
+async function dispatch(ctx: CommandContext, text: string): Promise<void> {
+  const trimmed = text.trim();
+  const boundary = trimmed.indexOf(" ");
+  const subcommand = boundary === -1 ? trimmed : trimmed.slice(0, boundary);
+  const rest = boundary === -1 ? "" : trimmed.slice(boundary + 1);
+
+  if (subcommand === "" || subcommand === "help") {
+    await ctx.respond(HELP_TEXT);
+    return;
+  }
+  if (subcommand === "holiday") {
+    await handleHoliday(ctx, rest);
+    return;
+  }
+  if (subcommand === "host") {
+    await handleHost(ctx, rest);
+    return;
+  }
+  if (subcommand === "list") {
+    await handleList(ctx);
+    return;
+  }
+
+  const args = await unwrap(ctx, parseArgs(rest, FLAG_SPEC));
+  if (args === undefined) return;
+
+  switch (subcommand) {
+    case "add":
+      return handleAdd(ctx, args);
+    case "edit":
+      return handleEdit(ctx, args);
+    case "show":
+      return handleShow(ctx, args);
+    case "pause":
+      return handleForExisting(ctx, args, (reminder) => ({
+        summary: `Pause \`${reminder.code}\`? It stops firing until you resume it.`,
+        action: { kind: "setEnabled", code: reminder.code, enabled: false },
+      }));
+    case "resume":
+      return handleForExisting(ctx, args, (reminder) => ({
+        summary: `Resume \`${reminder.code}\`? It fires again at ${formatSchedule(reminder)}.`,
+        action: { kind: "setEnabled", code: reminder.code, enabled: true },
+      }));
+    case "remove":
+      return handleForExisting(ctx, args, (reminder) => ({
+        summary: `Remove \`${reminder.code}\`?  ${formatSchedule(reminder)}\nThis cannot be undone.`,
+        action: { kind: "remove", code: reminder.code },
+      }));
+    case "run":
+      return handleForExisting(ctx, args, (reminder) => ({
+        summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
+        action: { kind: "run", code: reminder.code },
+      }));
+    default:
+      await ctx.respond(`unknown subcommand \`${subcommand}\` — try \`/bee-remind help\``);
+  }
+}
+
+interface ConfirmationArgs {
+  approved: boolean;
+  body: BlockAction<ButtonAction>;
+  respond: (message: { text: string; replace_original: true }) => Promise<unknown>;
+  client: WebClient;
+  logger: Logger;
+}
+
+async function resolveConfirmation({
+  approved,
+  body,
+  respond,
+  client,
+  logger,
+}: ConfirmationArgs): Promise<void> {
+  const pendingId = body.actions[0]?.value;
+  const entry = pendingId ? takeIfFreshAndOwnedBy(pendingId, body.user.id) : undefined;
+
+  if (!entry) {
+    await respond({
+      replace_original: true,
+      text: "That confirmation expired — run the command again.",
+    });
+    return;
+  }
+
+  if (!approved) {
+    await respond({ replace_original: true, text: "Cancelled — nothing changed." });
+    return;
+  }
+
+  try {
+    const result = await applyAction(entry, client);
+    await respond({ replace_original: true, text: result.ephemeral });
+    if (result.channel) {
+      await client.chat.postMessage({ channel: entry.channelId, text: result.channel });
+    }
+  } catch (error) {
+    logger.error("confirmation failed to apply", error);
+    await respond({ replace_original: true, text: "That didn't work. Check the logs." });
+  }
+}
+
+export function registerRemind(app: App): void {
+  app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
+    await ack();
+
+    if (command.channel_id.startsWith("D")) {
+      await respond("Use `/bee-remind` in a channel — reminders belong to a channel.");
+      return;
+    }
+
+    const ctx: CommandContext = {
+      channelId: command.channel_id,
+      userId: command.user_id,
+      respond: (text) => respond(text),
+      ask: async (summary, action) => {
+        const pendingId = put({
+          action,
+          userId: command.user_id,
+          channelId: command.channel_id,
+        });
+        await respond({ text: summary, blocks: confirmBlocks(summary, pendingId) });
+      },
+    };
+
+    try {
+      await dispatch(ctx, command.text ?? "");
+    } catch (error) {
+      logger.error("/bee-remind failed", error);
+      await respond("Something went wrong. Check the logs.");
+    }
+  });
+
+  app.action<BlockAction<ButtonAction>>(
+    APPROVE_ACTION,
+    async ({ ack, body, respond, client, logger }) => {
+      await ack();
+      await resolveConfirmation({ approved: true, body, respond, client, logger });
+    },
+  );
+
+  app.action<BlockAction<ButtonAction>>(
+    REJECT_ACTION,
+    async ({ ack, body, respond, client, logger }) => {
+      await ack();
+      await resolveConfirmation({ approved: false, body, respond, client, logger });
+    },
+  );
+}

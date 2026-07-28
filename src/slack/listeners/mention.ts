@@ -1,22 +1,16 @@
 import type { App } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { generateReply } from "../ai/index.js";
-import { config } from "../config.js";
-import { recordAiUsage } from "../db/ai-usage.js";
+import { generateReply } from "../../ai/index.js";
+import { config } from "../../config.js";
+import { recordAiUsage } from "../../store/ai-usage.js";
 
 const HISTORY_LIMIT = 20;
 
-/** Remove Slack mention tokens like <@U123> from message text. */
 function stripMentions(text: string): string {
   return text.replace(/<@[A-Z0-9]+>/g, "").trim();
 }
 
-/**
- * Build the chat history for the AI. If the mention happened inside an existing
- * thread, fetch prior messages so the bot holds a conversation; otherwise just
- * use the single mention text.
- */
 async function buildConversation(
   client: WebClient,
   channel: string,
@@ -25,9 +19,10 @@ async function buildConversation(
   isInThread: boolean,
   botUserId: string | undefined,
 ): Promise<ChatCompletionMessageParam[]> {
-  if (!isInThread) {
-    return [{ role: "user", content: stripMentions(mentionText) }];
-  }
+  const singleTurn: ChatCompletionMessageParam[] = [
+    { role: "user", content: stripMentions(mentionText) },
+  ];
+  if (!isInThread) return singleTurn;
 
   const replies = await client.conversations.replies({
     channel,
@@ -36,17 +31,15 @@ async function buildConversation(
   });
 
   const messages = (replies.messages ?? [])
-    .map((m): ChatCompletionMessageParam | null => {
-      const content = stripMentions(m.text ?? "");
+    .map((message): ChatCompletionMessageParam | null => {
+      const content = stripMentions(message.text ?? "");
       if (!content) return null;
-      const isBot = Boolean(botUserId && m.user === botUserId) || Boolean(m.bot_id);
+      const isBot = Boolean(botUserId && message.user === botUserId) || Boolean(message.bot_id);
       return { role: isBot ? "assistant" : "user", content };
     })
-    .filter((m): m is ChatCompletionMessageParam => m !== null);
+    .filter((message): message is ChatCompletionMessageParam => message !== null);
 
-  return messages.length > 0
-    ? messages
-    : [{ role: "user", content: stripMentions(mentionText) }];
+  return messages.length > 0 ? messages : singleTurn;
 }
 
 export function registerMention(app: App): void {
@@ -62,13 +55,14 @@ export function registerMention(app: App): void {
         context.botUserId,
       );
       const reply = await generateReply(conversation);
+
       // `markdown_text` lets Slack render the model's standard Markdown natively.
       await client.chat.postMessage({
         channel: event.channel,
         markdown_text: reply.text,
         thread_ts: threadTs,
       });
-      // Best-effort usage accounting — never let a DB hiccup break the reply.
+
       try {
         recordAiUsage({
           slackUserId: event.user,
@@ -76,8 +70,8 @@ export function registerMention(app: App): void {
           model: config.ai.deployment,
           ...reply.usage,
         });
-      } catch (dbError) {
-        logger.error("Failed to record AI usage", dbError);
+      } catch (error) {
+        logger.error("Failed to record AI usage", error);
       }
     } catch (error) {
       logger.error("AI reply failed", error);

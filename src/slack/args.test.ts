@@ -9,7 +9,6 @@ import {
   parseDate,
   parseDays,
   parseUserMentions,
-  suggestCode,
   unescapeNewlines,
   type FlagSpec,
 } from "./args.js";
@@ -196,40 +195,6 @@ describe("parseUserMentions", () => {
 
   it("rejects an empty list", () => {
     assert.equal(parseUserMentions([]).ok, false);
-  });
-});
-
-describe("suggestCode", () => {
-  const none = new Set<string>();
-
-  it("slugs the opening words", () => {
-    assert.equal(suggestCode("Standup time! Please join", none), "standup-time-please");
-  });
-
-  it("ignores mentions, channel links and broadcasts", () => {
-    assert.equal(suggestCode("<@U1|alice> sprint planning <!channel>", none), "sprint-planning");
-    assert.equal(suggestCode("<#C1|eng> code freeze", none), "code-freeze");
-  });
-
-  it("falls back when nothing usable survives", () => {
-    assert.equal(suggestCode("<@U1|alice>", none), "reminder");
-    assert.equal(suggestCode("🎉 ✨", none), "reminder");
-    assert.equal(suggestCode("", none), "reminder");
-  });
-
-  it("keeps whole words rather than cutting one in half", () => {
-    const code = suggestCode("extraordinarily circumlocutory pronouncement", none);
-    assert.equal(code, "extraordinarily");
-  });
-
-  it("still yields something when the first word alone is too long", () => {
-    const code = suggestCode("a".repeat(40), none);
-    assert.equal(code, "a".repeat(24));
-  });
-
-  it("suffixes past anything already taken", () => {
-    assert.equal(suggestCode("standup", new Set(["standup"])), "standup-2");
-    assert.equal(suggestCode("standup", new Set(["standup", "standup-2"])), "standup-3");
   });
 });
 

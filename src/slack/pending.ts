@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { NewReminder } from "../db/reminders.js";
+import type { NewReminder, ReminderChanges } from "../domain/types.js";
 
 const TTL_MS = 5 * 60_000;
-
-export interface ReminderChanges {
-  at?: string;
-  days?: string;
-  message?: string;
-  everyNWeeks?: number;
-}
 
 export type PendingAction =
   | { kind: "add"; reminder: NewReminder }
@@ -38,11 +31,6 @@ export function put(entry: Omit<PendingEntry, "createdAt">, now = Date.now()): s
   return id;
 }
 
-/**
- * One-shot: a confirmation can only be acted on once, only by whoever asked for
- * it, and only within the TTL. Anything else returns undefined and the caller
- * tells the user to run the command again.
- */
 export function takeIfFreshAndOwnedBy(
   id: string,
   userId: string,

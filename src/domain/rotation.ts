@@ -1,8 +1,4 @@
-/**
- * Lap ordering for reminder host rotation. Plain arrays in, plain arrays out —
- * no database, no Slack client, and `random` is injectable so the shuffle can
- * be asserted exactly.
- */
+import type { Host } from "./types.js";
 
 /** Fisher–Yates. A random comparator passed to `sort` is measurably biased on a small rota. */
 export function shuffle<T>(items: readonly T[], random: () => number = Math.random): T[] {
@@ -14,7 +10,6 @@ export function shuffle<T>(items: readonly T[], random: () => number = Math.rand
   return result;
 }
 
-/** A fresh lap. `pinFirst` keeps whoever was already up at the head — see `host set`. */
 export function drawLap(
   userIds: readonly string[],
   pinFirst?: string,
@@ -34,10 +29,9 @@ export function moveToBack(order: readonly string[], userId: string): string[] {
 }
 
 /**
- * A fresh lap that cannot open with `avoid`. This is what `skip` needs when the
- * lap had one person left: moving them to the back of a one-item list is a
- * no-op, so the lap rolls over instead — and rolling straight back onto them
- * would make the command appear to do nothing.
+ * Moving the only pending member to the back is a no-op, so a closing lap rolls
+ * over instead — and rolling straight back onto them would make `skip` appear to
+ * do nothing.
  */
 export function drawLapAvoiding(
   userIds: readonly string[],
@@ -49,38 +43,28 @@ export function drawLapAvoiding(
   return lap;
 }
 
-export interface LapMember {
-  userId: string;
-  lapOrder: number | null;
-}
-
-export function hasHosted(member: LapMember): boolean {
+export function hasHosted(member: Host): boolean {
   return member.lapOrder === null;
 }
 
-/** The pending lap, in order — assumes `roster` is sorted hosted-first-then-pending, as `listHosts` returns it. */
-export function pendingLap(roster: readonly LapMember[]): string[] {
+/** Assumes `roster` is sorted hosted-first-then-pending, as `listHosts` returns it. */
+export function pendingLap(roster: readonly Host[]): string[] {
   return roster.filter((member) => !hasHosted(member)).map((member) => member.userId);
 }
 
 /**
- * The lap to store after `host set` replaces the roster with `userIds`.
- *
  * Anyone who already hosted this lap stays hosted, so correcting a typo cannot
  * hand someone a second turn. Whoever was up stays up if they survived the
- * change; the rest is re-drawn. A roster whose members have all hosted starts a
- * fresh lap rather than leaving nobody pending.
+ * change. A roster whose members have all hosted starts a fresh lap.
  */
 export function planLap(
-  existing: readonly LapMember[],
+  existing: readonly Host[],
   userIds: readonly string[],
   random: () => number = Math.random,
 ): string[] {
-  const hosted = new Set(
-    existing.filter((member) => member.lapOrder === null).map((member) => member.userId),
-  );
+  const hosted = new Set(existing.filter(hasHosted).map((member) => member.userId));
   const upNext = existing
-    .filter((member) => member.lapOrder !== null)
+    .filter((member) => !hasHosted(member))
     .sort((a, b) => a.lapOrder! - b.lapOrder!)[0]?.userId;
 
   const pending = userIds.filter((id) => !hosted.has(id));

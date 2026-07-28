@@ -1,7 +1,5 @@
-export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
-
-const ok = <T>(value: T): Parsed<T> => ({ ok: true, value });
-const fail = <T>(error: string): Parsed<T> => ({ ok: false, error });
+import { DAY_NAMES, EVERY_DAY, daysColumn, isDayName, isEveryDay } from "../domain/days.js";
+import { fail, ok, type Parsed } from "../domain/result.js";
 
 export interface FlagSpec {
   withValue: readonly string[];
@@ -13,18 +11,8 @@ export interface Args {
   flags: Map<string, string | true>;
 }
 
-export const DAY_ORDER = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-] as const;
-
-const EVERY_DAY = "*";
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const LABELLED_MENTION = /<@([UWB][A-Z0-9]+)\|[^>]*>/g;
 const USER_MENTION = /^<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>$/;
 
@@ -60,6 +48,12 @@ function tokenize(text: string): Parsed<string[]> {
   if (quoted) return fail("unbalanced quote — every `\"` needs a closing `\"`");
   if (started) tokens.push(current);
   return ok(tokens);
+}
+
+function splitFlag(token: string): [string, string | undefined] {
+  const body = token.slice(2);
+  const equals = body.indexOf("=");
+  return equals === -1 ? [body, undefined] : [body.slice(0, equals), body.slice(equals + 1)];
 }
 
 export function parseArgs(text: string, spec: FlagSpec): Parsed<Args> {
@@ -99,12 +93,6 @@ export function parseArgs(text: string, spec: FlagSpec): Parsed<Args> {
   return ok({ positionals, flags });
 }
 
-function splitFlag(token: string): [string, string | undefined] {
-  const body = token.slice(2);
-  const equals = body.indexOf("=");
-  return equals === -1 ? [body, undefined] : [body.slice(0, equals), body.slice(equals + 1)];
-}
-
 export function parseAt(value: string): Parsed<string> {
   return TIME_PATTERN.test(value)
     ? ok(value)
@@ -115,21 +103,29 @@ export function parseDays(value: string): Parsed<string> {
   if (value === "daily") return ok(EVERY_DAY);
 
   const names = value.split(",").map((name) => name.trim().toLowerCase());
-  const seen = new Set<string>();
+  const chosen = new Set<string>();
 
   for (const name of names) {
-    if (!DAY_ORDER.includes(name as (typeof DAY_ORDER)[number])) {
-      return fail(`\`${name}\` is not a day — use \`daily\` or full names: ${DAY_ORDER.join(", ")}`);
+    if (!isDayName(name)) {
+      return fail(`\`${name}\` is not a day — use \`daily\` or full names: ${DAY_NAMES.join(", ")}`);
     }
-    if (seen.has(name)) return fail(`\`${name}\` listed twice`);
-    seen.add(name);
+    if (chosen.has(name)) return fail(`\`${name}\` listed twice`);
+    chosen.add(name);
   }
 
-  return ok(DAY_ORDER.filter((day) => seen.has(day)).join(","));
+  return ok(daysColumn(chosen));
+}
+
+/** Day checkboxes from the New Reminder dialog. All seven is `*`, as `--on daily` stores. */
+export function daysFromSelection(dayNames: readonly string[]): Parsed<string> {
+  if (dayNames.length === 0) return fail("pick at least one day");
+
+  const chosen = new Set(dayNames);
+  return ok(isEveryDay(chosen) ? EVERY_DAY : daysColumn(chosen));
 }
 
 export function parseDate(value: string): Parsed<string> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (!DATE_PATTERN.test(value)) {
     return fail(`\`${value}\` is not a date — use YYYY-MM-DD, like \`2026-08-17\``);
   }
 
@@ -148,7 +144,7 @@ export function parseCadence(flags: Map<string, string | true>): Parsed<number> 
   return ok(given.length === 0 ? 1 : CADENCE_FLAGS.get(given[0]!)!);
 }
 
-/** Slash-command input is one line, so a literal `\n` is how a multi-line message is typed. */
+/** A slash command is one line, so a literal `\n` is how a multi-line message is typed. */
 export function unescapeNewlines(value: string): string {
   return value.replaceAll(String.raw`\n`, "\n");
 }
@@ -158,54 +154,6 @@ export function normalizeMentions(text: string): string {
   return text.replace(LABELLED_MENTION, "<@$1>");
 }
 
-const SLACK_TOKEN = /<[@#!][^>]*>/g;
-const CODE_WORDS = 3;
-const CODE_MAX_LENGTH = 24;
-const CODE_FALLBACK = "reminder";
-
-/**
- * A code slugged from a message's opening words, so the New Reminder dialog can
- * arrive pre-filled with something valid. `taken` are the codes already used in
- * that channel; a collision gets a numeric suffix rather than a failed submit.
- */
-export function suggestCode(messageText: string, taken: ReadonlySet<string>): string {
-  const words = messageText
-    .replace(SLACK_TOKEN, " ")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  // Whole words only, so the slug never ends mid-word or on a stray dash.
-  const picked: string[] = [];
-  for (const word of words.slice(0, CODE_WORDS)) {
-    if ([...picked, word].join("-").length > CODE_MAX_LENGTH) break;
-    picked.push(word);
-  }
-
-  const base =
-    picked.join("-") || words[0]?.slice(0, CODE_MAX_LENGTH) || CODE_FALLBACK;
-
-  if (!taken.has(base)) return base;
-  let suffix = 2;
-  while (taken.has(`${base}-${suffix}`)) suffix++;
-  return `${base}-${suffix}`;
-}
-
-/** Day checkboxes → the `days` column. All seven is `*`, exactly what `--on daily` stores. */
-export function daysFromSelection(dayNames: readonly string[]): Parsed<string> {
-  if (dayNames.length === 0) return fail("pick at least one day");
-
-  const chosen = new Set(dayNames);
-  if (chosen.size === DAY_ORDER.length) return ok(EVERY_DAY);
-  return ok(DAY_ORDER.filter((day) => chosen.has(day)).join(","));
-}
-
-/**
- * User ids from `@name` tokens, in the order given. A token arriving as plain
- * text means the slash command's escaping is off, so the error says so — that
- * setting is otherwise a silent dead end.
- */
 export function parseUserMentions(tokens: readonly string[]): Parsed<string[]> {
   if (tokens.length === 0) return fail("list at least one person, like `@alice @bob`");
 
