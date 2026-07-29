@@ -6,6 +6,7 @@ import {
 } from "../../../store/reminders.js";
 import { reminderDetailBlocks, reminderListBlocks } from "../../blocks.js";
 import {
+  formatHeadsUp,
   formatNextFire,
   formatRecurrence,
   formatRotation,
@@ -33,15 +34,18 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
   if (reminder === undefined) return;
 
   const rotation = formatRotation(listHosts(reminder.id), lastHostedOn(reminder.id));
+  const headsUp = formatHeadsUp(reminder);
   const body = [
     `*\`${reminder.code}\`*`,
     `*schedule*  ${formatSchedule(reminder)}`,
+    ...(headsUp ? [`*heads-up*  ${headsUp}`] : []),
     `*created*  ${mention(reminder.createdBy)} on ${formatTimestamp(reminder.createdAt)}`,
     `*last fired*  ${formatTimestamp(reminder.lastFiredAt)}`,
     `*next fire*  ${formatNextFire(reminder, listHolidayDates())}`,
     "",
     "*message*",
     reminder.message,
+    ...(reminder.preMessage ? ["", "*heads-up message*", reminder.preMessage] : []),
   ].join("\n");
 
   await ctx.respond(

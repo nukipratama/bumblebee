@@ -1,5 +1,5 @@
 import type { KnownBlock } from "@slack/web-api";
-import type { BodyFormat } from "../domain/types.js";
+import type { BodyFormat, Reminder, Skip } from "../domain/types.js";
 
 export const SKIP_ACTION = "reminder_skip";
 export const APPROVE_ACTION = "remind_approve";
@@ -17,11 +17,48 @@ export interface ReminderPost {
   bodyFormat: BodyFormat;
   host?: string;
   hostUnavailable?: boolean;
-  skips: readonly string[];
+  skips: readonly Skip[];
   skippable: boolean;
 }
 
+/**
+ * Which of a reminder's two posts a card is. Only the body differs, so a repaint
+ * has to know which message it is rewriting or it would overwrite the heads-up
+ * with the meeting body.
+ */
+export type PostBody = "heads-up" | "meeting";
+
+/**
+ * The heads-up prefix is applied here rather than stored, or editing a reminder
+ * would prepend a second copy. A lead with no pre-message falls back to the
+ * meeting body instead of posting a bare prefix.
+ */
+export function reminderBody(
+  reminder: Pick<Reminder, "at" | "message" | "bodyFormat" | "preMessage">,
+  which: PostBody,
+): Pick<ReminderPost, "body" | "bodyFormat"> {
+  if (which === "meeting" || reminder.preMessage === null) {
+    return { body: reminder.message, bodyFormat: reminder.bodyFormat };
+  }
+  return { body: `Heads Up at ${reminder.at}: ${reminder.preMessage}`, bodyFormat: "markdown" };
+}
+
 const mention = (userId: string): string => `<@${userId}>`;
+
+/** A reason is typed literally, so `<!channel>` in one must not become a ping. */
+function escapeMrkdwn(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function skipLine(skip: Skip): string {
+  const reason = skip.reason ? ` - ${escapeMrkdwn(skip.reason)}` : "";
+  return `• ${mention(skip.userId)}${reason}`;
+}
+
+/** One line each: a reason runs long, and comma-joining would bury whose it is. */
+function skipList(skips: readonly Skip[]): string {
+  return ["🔕 Skip:", ...skips.map(skipLine)].join("\n");
+}
 
 /** Each dialect goes through the block that reads it as written. Never convert. */
 function bodyBlock(post: ReminderPost): KnownBlock {
@@ -34,14 +71,11 @@ function bodyBlock(post: ReminderPost): KnownBlock {
 export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const blocks: KnownBlock[] = [bodyBlock(post)];
 
-  const context: string[] = [];
+  // Always present: without it a post gives no way back to the reminder that made it.
+  const context: string[] = [`⚙️ \`${post.code}\``];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
-  if (post.skips.length > 0) {
-    context.push(`🔕 Skip: ${post.skips.map(mention).join(", ")}`);
-  }
-  // Always last: without it a post gives no way back to the reminder that made it.
-  context.push(`⚙️ \`${post.code}\``);
+  if (post.skips.length > 0) context.push(skipList(post.skips));
 
   blocks.push({
     type: "context",

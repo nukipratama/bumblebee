@@ -19,6 +19,17 @@ export function localParts(date: Date): WallClock {
   };
 }
 
+const MINUTES_PER_HOUR = 60;
+
+export function minutesSinceMidnight(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number) as [number, number];
+  return hours * MINUTES_PER_HOUR + minutes;
+}
+
+export function timeAtMinutes(minutes: number): string {
+  return `${pad(Math.floor(minutes / MINUTES_PER_HOUR))}:${pad(minutes % MINUTES_PER_HOUR)}`;
+}
+
 export function daysBetween(earlier: string, later: string): number {
   return Math.round(
     (Date.parse(`${later}T00:00:00Z`) - Date.parse(`${earlier}T00:00:00Z`)) / MS_PER_DAY,

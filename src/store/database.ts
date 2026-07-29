@@ -77,6 +77,15 @@ const migrations: string[] = [
   `ALTER TABLE reminder_skips ADD COLUMN reason TEXT`,
   // The thread reply carrying that reason, so editing rewrites it instead of piling up.
   `ALTER TABLE reminder_skips ADD COLUMN notice_ts TEXT`,
+  // How far before `at` the reminder fires. The post at `at` stays the meeting
+  // ping; firing early is what gives a host time to hand over beforehand.
+  `ALTER TABLE reminders ADD COLUMN lead_minutes INTEGER NOT NULL DEFAULT 0`,
+  // NULL until a reminder opts into a lead, which is also when it becomes required.
+  `ALTER TABLE reminders ADD COLUMN pre_message TEXT`,
+  // One fire, two posts: either message ts must resolve back to this row.
+  `ALTER TABLE reminder_fires ADD COLUMN join_message_ts TEXT`,
+  // Reasons render on the posts themselves now, so there is no reply to remember.
+  `ALTER TABLE reminder_skips DROP COLUMN notice_ts`,
 ];
 
 export function initDb(): void {

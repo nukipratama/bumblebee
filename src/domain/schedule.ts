@@ -1,4 +1,10 @@
-import { daysBetween, localParts, type WallClock } from "./clock.js";
+import {
+  daysBetween,
+  localParts,
+  minutesSinceMidnight,
+  timeAtMinutes,
+  type WallClock,
+} from "./clock.js";
 import { dayMatches, isSingleDay } from "./days.js";
 import { fail, ok, type Parsed } from "./result.js";
 import type { Reminder } from "./types.js";
@@ -6,6 +12,7 @@ import type { Reminder } from "./types.js";
 const EVERY_WEEK = 1;
 const DAYS_PER_WEEK = 7;
 const SEARCH_LIMIT_DAYS = 28;
+const NO_LEAD = 0;
 
 export function formatCadence(everyNWeeks: number): string {
   return everyNWeeks === EVERY_WEEK ? "every week" : `every ${everyNWeeks} weeks`;
@@ -13,6 +20,33 @@ export function formatCadence(everyNWeeks: number): string {
 
 export function matches(reminder: Reminder, now: Pick<WallClock, "time" | "day">): boolean {
   return reminder.at === now.time && dayMatches(reminder.days, now.day);
+}
+
+/** Null when the reminder has no lead, which is also when there is no early post. */
+export function leadTime(reminder: Pick<Reminder, "at" | "leadMinutes">): string | null {
+  if (reminder.leadMinutes === NO_LEAD) return null;
+  return timeAtMinutes(minutesSinceMidnight(reminder.at) - reminder.leadMinutes);
+}
+
+export function matchesLead(
+  reminder: Pick<Reminder, "at" | "days" | "leadMinutes">,
+  now: Pick<WallClock, "time" | "day">,
+): boolean {
+  return leadTime(reminder) === now.time && dayMatches(reminder.days, now.day);
+}
+
+/**
+ * A lead reaching back past midnight would fire against the previous day, so the
+ * day rule and the holiday check would both read the wrong date.
+ */
+export function leadFitsBeforeMidnight(leadMinutes: number, at: string): Parsed<true> {
+  const latest = minutesSinceMidnight(at);
+  if (leadMinutes <= latest) return ok(true);
+
+  return fail(
+    `a ${leadMinutes} minute heads-up on a \`${at}\` reminder would land the day before — ` +
+      `${latest} is the most it can be`,
+  );
 }
 
 export function requiredDaysSinceLastFire(everyNWeeks: number): number {

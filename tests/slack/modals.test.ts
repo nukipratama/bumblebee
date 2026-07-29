@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { InputBlock, ModalView } from "@slack/web-api";
-import type { Reminder, Skip } from "../../src/domain/types.js";
+import type { Host, Reminder, Skip } from "../../src/domain/types.js";
 import {
   SKIP_FORM,
   type FormFields,
@@ -38,6 +38,8 @@ const reminder = (overrides: Partial<Reminder> = {}): Reminder => ({
   message: "Standup time!",
   bodyFormat: "markdown",
   everyNWeeks: 1,
+  leadMinutes: 0,
+  preMessage: null,
   lastFiredAt: null,
   createdBy: "U1",
   createdAt: "2026-07-01T00:00:00.000Z",
@@ -313,19 +315,19 @@ describe("plannedEdit", () => {
   });
 
   it("plans nothing when the form comes back exactly as it was opened", () => {
-    assert.deepEqual(plannedEdit(stored, roster, unchanged, "09:00", "monday"), {});
+    assert.deepEqual(plannedEdit(stored, roster, unchanged, "09:00", "monday", 0), {});
   });
 
   it("leaves the roster alone when the same people come back in a different order", () => {
     const reordered = { ...unchanged, hosts: ["U_C", "U_A", "U_B"] };
-    const planned = plannedEdit(stored, roster, reordered, "09:00", "monday");
+    const planned = plannedEdit(stored, roster, reordered, "09:00", "monday", 0);
 
     assert.equal(planned.hosts, undefined, "re-planning the lap would redraw a published order");
   });
 
   it("does not rewrite an unchanged message, which would reset the body format", () => {
     const captured = reminder({ ...stored, bodyFormat: "mrkdwn" });
-    const planned = plannedEdit(captured, roster, { ...unchanged, at: "10:00" }, "10:00", "monday");
+    const planned = plannedEdit(captured, roster, { ...unchanged, at: "10:00" }, "10:00", "monday", 0);
 
     assert.equal(planned.at, "10:00");
     assert.equal(planned.message, undefined);
@@ -333,7 +335,7 @@ describe("plannedEdit", () => {
 
   it("plans each field that genuinely changed, and only those", () => {
     const edited = { ...unchanged, message: "New!", everyNWeeks: 2, hosts: ["U_A", "U_B"] };
-    const planned = plannedEdit(stored, roster, edited, "16:30", "friday");
+    const planned = plannedEdit(stored, roster, edited, "16:30", "friday", 0);
 
     assert.deepEqual(planned, {
       at: "16:30",
@@ -345,13 +347,13 @@ describe("plannedEdit", () => {
   });
 
   it("plans an empty roster, which is how a rotation is cleared", () => {
-    const cleared = plannedEdit(stored, roster, { ...unchanged, hosts: [] }, "09:00", "monday");
+    const cleared = plannedEdit(stored, roster, { ...unchanged, hosts: [] }, "09:00", "monday", 0);
     assert.deepEqual(cleared.hosts, []);
   });
 
   it("ignores a message block that was never rendered", () => {
     const noMessage = { ...unchanged, message: undefined };
-    assert.equal(plannedEdit(stored, roster, noMessage, "09:00", "monday").message, undefined);
+    assert.equal(plannedEdit(stored, roster, noMessage, "09:00", "monday", 0).message, undefined);
   });
 });
 
@@ -384,7 +386,7 @@ describe("skipModal", () => {
   });
 
   it("prefills an existing reason so it can be corrected", () => {
-    const { element } = reasonInput({ userId: "U_B", reason: "sick", noticeTs: null });
+    const { element } = reasonInput({ userId: "U_B", reason: "sick" });
     assert.ok(element.type === "plain_text_input" && element.initial_value === "sick");
   });
 
@@ -393,7 +395,7 @@ describe("skipModal", () => {
     assert.deepEqual(fresh.title, { type: "plain_text", text: "Skip me" });
     assert.deepEqual(fresh.submit, { type: "plain_text", text: "Skip" });
 
-    const again = modal({ userId: "U_B", reason: null, noticeTs: null });
+    const again = modal({ userId: "U_B", reason: null });
     assert.deepEqual(again.title, { type: "plain_text", text: "You're skipping" });
     assert.deepEqual(again.submit, { type: "plain_text", text: "Save" });
   });
@@ -409,5 +411,68 @@ describe("readSkipReason", () => {
       assert.equal(readSkipReason(values({ reason: state })), undefined);
     }
     assert.equal(readSkipReason(values({})), undefined);
+  });
+});
+
+describe("validate — the heads-up", () => {
+  const ok = (result: ReturnType<typeof validate>) => {
+    assert.ok(!("errors" in result));
+    return result;
+  };
+
+  it("defaults to none when the box is empty", () => {
+    assert.equal(ok(validate(fields(), NONE)).leadMinutes, 0);
+  });
+
+  it("takes a plain number of minutes", () => {
+    const result = validate(fields({ lead: "55", preMessage: "Daily Standup" }), NONE);
+    assert.equal(ok(result).leadMinutes, 55);
+  });
+
+  it("refuses anything that is not digits", () => {
+    const result = validate(fields({ lead: "55m", preMessage: "x" }), NONE);
+    assert.ok("errors" in result && result.errors.lead);
+  });
+
+  it("refuses a lead that would reach back past midnight", () => {
+    const result = validate(fields({ at: "00:15", lead: "60", preMessage: "x" }), NONE);
+    assert.ok("errors" in result && /the day before/.test(result.errors.lead ?? ""));
+  });
+
+  it("requires something to say once a lead is set", () => {
+    const result = validate(fields({ lead: "55" }), NONE);
+    assert.ok("errors" in result && result.errors.preMessage);
+  });
+
+  it("wants no heads-up message when there is no lead", () => {
+    assert.ok(!("errors" in validate(fields(), NONE)));
+  });
+});
+
+describe("plannedEdit — the heads-up", () => {
+  const stored = reminder({ at: "09:00", days: "monday", leadMinutes: 55, preMessage: "Standup" });
+  const roster: Host[] = [];
+  const same = fields({
+    code: undefined,
+    message: stored.message,
+    at: "09:00",
+    dayNames: ["monday"],
+    preMessage: "Standup",
+    hosts: [],
+  });
+
+  it("plans nothing when neither field moved", () => {
+    assert.deepEqual(plannedEdit(stored, roster, same, "09:00", "monday", 55), {});
+  });
+
+  it("plans the lead on its own when only it changed", () => {
+    const planned = plannedEdit(stored, roster, same, "09:00", "monday", 30);
+    assert.deepEqual(planned, { leadMinutes: 30 });
+  });
+
+  it("clears the heads-up message to null when the box is emptied", () => {
+    const emptied = { ...same, preMessage: undefined };
+    const planned = plannedEdit(stored, roster, emptied, "09:00", "monday", 0);
+    assert.deepEqual(planned, { leadMinutes: 0, preMessage: null });
   });
 });

@@ -34,11 +34,13 @@ function contextText(blocks: ReturnType<typeof reminderBlocks>): string | undefi
   return element && "text" in element ? element.text : undefined;
 }
 
-/** The context minus the code, which every post carries — see its own describe below. */
+/** The context minus the code, which leads it on every post — see its own describe below. */
 function hostContext(blocks: ReturnType<typeof reminderBlocks>): string | undefined {
-  const lines = contextText(blocks)?.split("\n").slice(0, -1) ?? [];
+  const lines = contextText(blocks)?.split("\n").slice(1) ?? [];
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
+
+const skip = (userId: string, reason: string | null = null) => ({ userId, reason });
 
 describe("reminderBlocks — body dialect", () => {
   it("renders a Markdown body through a markdown block", () => {
@@ -70,25 +72,47 @@ describe("reminderBlocks — host and skips", () => {
   });
 
   it("lists one person skipping", () => {
-    const text = hostContext(reminderBlocks(post({ skips: ["U_BOB"] })));
-    assert.equal(text, "🔕 Skip: <@U_BOB>");
+    const text = hostContext(reminderBlocks(post({ skips: [skip("U_BOB")] })));
+    assert.equal(text, "🔕 Skip:\n• <@U_BOB>");
   });
 
-  it("lists several people skipping, in the order given", () => {
-    const text = hostContext(reminderBlocks(post({ skips: ["U_BOB", "U_DANA"] })));
-    assert.equal(text, "🔕 Skip: <@U_BOB>, <@U_DANA>");
+  it("gives each person their own line, in the order given", () => {
+    const text = hostContext(reminderBlocks(post({ skips: [skip("U_BOB"), skip("U_DANA")] })));
+    assert.equal(text, "🔕 Skip:\n• <@U_BOB>\n• <@U_DANA>");
   });
 
-  it("puts the skips on their own line, so a long list never crowds the host", () => {
-    const text = hostContext(reminderBlocks(post({ host: "U_ALICE", skips: ["U_BOB", "U_DANA"] })));
-    assert.equal(text, "🎙 Host: <@U_ALICE>\n🔕 Skip: <@U_BOB>, <@U_DANA>");
+  it("shows a reason beside whoever gave one, and nothing extra for whoever did not", () => {
+    const text = hostContext(
+      reminderBlocks(post({ skips: [skip("U_BOB", "dentist"), skip("U_DANA")] })),
+    );
+    assert.equal(text, "🔕 Skip:\n• <@U_BOB> - dentist\n• <@U_DANA>");
+  });
+
+  it("escapes a reason, so `<!channel>` in one cannot ping the channel on every repost", () => {
+    const text = hostContext(
+      reminderBlocks(post({ skips: [skip("U_BOB", "ask <!channel> & co")] })),
+    );
+    assert.equal(text, "🔕 Skip:\n• <@U_BOB> - ask &lt;!channel&gt; &amp; co");
+  });
+
+  it("keeps a long reason whole rather than truncating it", () => {
+    const reason = "a".repeat(200);
+    const text = hostContext(reminderBlocks(post({ skips: [skip("U_BOB", reason)] })));
+    assert.ok(text?.includes(reason));
+  });
+
+  it("puts the skips below the host, so a long list never crowds it", () => {
+    const text = hostContext(
+      reminderBlocks(post({ host: "U_ALICE", skips: [skip("U_BOB"), skip("U_DANA")] })),
+    );
+    assert.equal(text, "🎙 Host: <@U_ALICE>\n🔕 Skip:\n• <@U_BOB>\n• <@U_DANA>");
   });
 
   it("reports that nobody is hosting when a handover found no one available", () => {
     const text = hostContext(
-      reminderBlocks(post({ hostUnavailable: true, skips: ["U_BOB", "U_ALICE"] })),
+      reminderBlocks(post({ hostUnavailable: true, skips: [skip("U_BOB"), skip("U_ALICE")] })),
     );
-    assert.equal(text, "⚠️ Nobody available to host\n🔕 Skip: <@U_BOB>, <@U_ALICE>");
+    assert.equal(text, "⚠️ Nobody available to host\n🔕 Skip:\n• <@U_BOB>\n• <@U_ALICE>");
   });
 
   it("names the host rather than the warning whenever there is one", () => {
@@ -103,20 +127,23 @@ describe("reminderBlocks — host and skips", () => {
 
   it("leaves no stray blank line when only one of the two is present", () => {
     assert.equal(hostContext(reminderBlocks(post({ host: "U_ALICE" }))), "🎙 Host: <@U_ALICE>");
-    assert.equal(hostContext(reminderBlocks(post({ skips: ["U_BOB"] }))), "🔕 Skip: <@U_BOB>");
+    assert.equal(
+      hostContext(reminderBlocks(post({ skips: [skip("U_BOB")] }))),
+      "🔕 Skip:\n• <@U_BOB>",
+    );
   });
 });
 
 describe("reminderBlocks — the code", () => {
   it("names the reminder on every post, so a post leads back to `show <code>`", () => {
-    for (const overrides of [{}, { host: "U_ALICE" }, { skips: ["U_BOB"] }]) {
-      assert.match(contextText(reminderBlocks(post(overrides))) ?? "", /⚙️ `standup`$/);
+    for (const overrides of [{}, { host: "U_ALICE" }, { skips: [skip("U_BOB")] }]) {
+      assert.match(contextText(reminderBlocks(post(overrides))) ?? "", /^⚙️ `standup`/);
     }
   });
 
-  it("puts it last, below whoever is hosting", () => {
-    const text = contextText(reminderBlocks(post({ host: "U_ALICE", skips: ["U_BOB"] })));
-    assert.equal(text, "🎙 Host: <@U_ALICE>\n🔕 Skip: <@U_BOB>\n⚙️ `standup`");
+  it("puts it first, above whoever is hosting", () => {
+    const text = contextText(reminderBlocks(post({ host: "U_ALICE", skips: [skip("U_BOB")] })));
+    assert.equal(text, "⚙️ `standup`\n🎙 Host: <@U_ALICE>\n🔕 Skip:\n• <@U_BOB>");
   });
 });
 
@@ -126,7 +153,7 @@ describe("reminderBlocks — skip button", () => {
   });
 
   it("reads the same for everyone, since one post cannot render per viewer", () => {
-    const blocks = reminderBlocks(post({ skippable: true, skips: ["U_BOB"] }));
+    const blocks = reminderBlocks(post({ skippable: true, skips: [skip("U_BOB")] }));
     const actions = blocks.find((block) => block.type === "actions");
     assert.ok(actions && actions.type === "actions");
     assert.deepEqual(actions.elements, [
@@ -143,7 +170,7 @@ describe("fallbackText", () => {
   it("is never empty, in every permutation", () => {
     for (const bodyFormat of ["markdown", "mrkdwn"] as const) {
       for (const host of [undefined, "U_ALICE"]) {
-        for (const skips of [[], ["U_BOB"]]) {
+        for (const skips of [[], [skip("U_BOB")]]) {
           for (const skippable of [false, true]) {
             const text = fallbackText(post({ bodyFormat, host, skips, skippable }));
             assert.ok(text.length > 0);
