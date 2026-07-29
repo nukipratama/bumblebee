@@ -1,7 +1,7 @@
 import { localParts } from "../domain/clock.js";
 import { EVERY_DAY, WEEKDAY_COLUMN } from "../domain/days.js";
 import { hasHosted } from "../domain/rotation.js";
-import { formatCadence, nextFire } from "../domain/schedule.js";
+import { formatCadence, leadTime, nextFire } from "../domain/schedule.js";
 import type { Host, Reminder } from "../domain/types.js";
 
 export const mention = (userId: string): string => `<@${userId}>`;
@@ -20,6 +20,14 @@ export function formatRecurrence(reminder: Pick<Reminder, "days" | "everyNWeeks"
 
 export function formatSchedule(reminder: Pick<Reminder, "at" | "days" | "everyNWeeks">): string {
   return `${reminder.at} · ${formatRecurrence(reminder)}`;
+}
+
+/** Undefined when there is no lead, so callers drop the line rather than print a zero. */
+export function formatHeadsUp(
+  reminder: Pick<Reminder, "at" | "leadMinutes">,
+): string | undefined {
+  const early = leadTime(reminder);
+  return early ? `${early} · ${reminder.leadMinutes}m before` : undefined;
 }
 
 export function formatTimestamp(iso: string | null): string {

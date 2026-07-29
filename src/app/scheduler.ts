@@ -1,8 +1,10 @@
 import type { App, Logger } from "@slack/bolt";
-import { localParts } from "../domain/clock.js";
-import { matches } from "../domain/schedule.js";
+import type { WebClient } from "@slack/web-api";
+import { localParts, type WallClock } from "../domain/clock.js";
+import { matches, matchesLead } from "../domain/schedule.js";
+import type { Reminder } from "../domain/types.js";
 import { listAllReminders } from "../store/reminders.js";
-import { fireReminder } from "./fire.js";
+import { fireReminder, type FireOutcome, postJoin } from "./fire.js";
 
 const MS_PER_MINUTE = 60_000;
 const JUST_AFTER_THE_MINUTE_MS = 61_000;
@@ -27,16 +29,30 @@ function assertJakarta(logger: Logger): void {
   );
 }
 
+type DuePost = (reminder: Reminder, client: WebClient) => Promise<FireOutcome>;
+
+const postHeadsUp: DuePost = (reminder, client) => fireReminder(reminder, client, "heads-up");
+const postMeeting: DuePost = (reminder, client) => fireReminder(reminder, client, "meeting");
+
+/** The lead time fires; `at` joins that fire, or fires outright with no lead set. */
+function duePost(reminder: Reminder, now: WallClock): DuePost | undefined {
+  if (matchesLead(reminder, now)) return postHeadsUp;
+  if (!matches(reminder, now)) return undefined;
+
+  return reminder.leadMinutes > 0 ? postJoin : postMeeting;
+}
+
 async function runTick(app: App): Promise<void> {
   const now = new Date();
   const wallClock = localParts(now);
   lastTickAt = now;
 
   for (const reminder of listAllReminders()) {
-    if (!matches(reminder, wallClock)) continue;
+    const post = duePost(reminder, wallClock);
+    if (!post) continue;
 
     try {
-      const outcome = await fireReminder(reminder, app.client);
+      const outcome = await post(reminder, app.client);
       if (outcome.posted) {
         const host = outcome.host ? ` (host ${outcome.host})` : "";
         app.logger.info(`fired \`${reminder.code}\` -> ${reminder.channelId}${host}`);

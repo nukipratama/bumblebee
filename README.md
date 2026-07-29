@@ -24,7 +24,8 @@ anyone can manage from Slack itself, with no redeploy.
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
 | **Reminder commands** | `/bee-remind list` · `show` · `holiday` | Three read-only commands; creating, editing, running and removing are buttons and dialogs. |
 | **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
-| **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason. The host hands over to the next person; anyone else is just listed as skipping. |
+| **Heads-up** | The **Heads-up** field on the reminder form | Posts an early notice N minutes before, naming the host then — so a handover can happen before the meeting starts. |
+| **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason, shown on the post. The host hands over to the next person; anyone else is just listed as skipping. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
 
@@ -168,6 +169,38 @@ cadence are pickers, so there are no flags to remember and no quoting rules to g
 - **Holidays are global** — a date added in any channel skips reminders in every channel.
   `holiday` shows who added each one and where.
 
+### The heads-up
+
+Fill in **Heads-up** on the form — a number of minutes — and the reminder posts **twice**: an early
+heads-up, then the usual message at its normal time. Leave it empty and nothing changes; that is how
+every reminder behaves by default.
+
+```
+09:30   Heads Up at 10:25: Daily Standup      <- Heads-up = 55, Heads-up message
+        ⚙️ `standup`
+        🎙 Host: @alice
+        [ Skip me ]
+
+10:25   https://meet.google.com/nkj-aamw-kzb  <- Time = 10:25, Message
+        ⚙️ `standup`
+        🎙 Host: @alice
+        [ Skip me ]
+```
+
+- **Time still means the meeting time.** The heads-up counts *back* from it, so setting one never
+  moves the post you already have.
+- **The host is picked at the heads-up**, which is the point: it opens a window to hand over before
+  anyone is in the call. Both posts carry `Skip me`, both show the same host and skip list, and a
+  handover on either rewrites both.
+- **Heads-up message is required once a heads-up is set**, and is separate from the main message —
+  the early post says what the meeting is, the later one carries the link.
+- **A heads-up can't reach back past midnight.** A `00:15` reminder tops out at 15 minutes, so both
+  posts always land on the same date and see the same holidays.
+- **If the bot is down at the heads-up**, the post at the meeting time fires normally instead. That
+  day loses its heads-up and its handover window, but nobody loses their turn.
+- **A holiday added between the two posts doesn't retract the first.** Mark holidays before the
+  heads-up fires.
+
 > [!NOTE]
 > **Every command that changes data asks first.** You get a private preview with Approve / Reject;
 > only after Approve does it apply and announce the change in the channel. Confirmations expire after
@@ -198,20 +231,24 @@ Every rotating reminder posts with a **`Skip me`** button. It opens a dialog wit
 reason — which is **optional**: submit it empty and you're simply listed as skipping.
 
 ```
-🎙 Host: @alice
-🔕 Skip: @bob, @dana
 ⚙️ `standup`
+🎙 Host: @alice
+🔕 Skip:
+• @bob - sick, back tomorrow
+• @dana
 ```
 
-- **The reason lives in the thread**, not on the post, as one reply per person:
-  `🔕 @bob is skipping — sick, back tomorrow`. Leave the box empty and nothing is posted at all.
-- **Clicking again reopens the dialog prefilled.** Editing rewrites that same thread reply rather
-  than adding a second one; clearing the box deletes it and leaves you listed.
-- **If you're the host**, and it's **within 30 minutes** of the reminder firing, the next person in
-  the lap takes over. The post rewrites itself to name them, adds you to `🔕 Skip:`, and a thread
-  reply says so. **You keep your turn** — you go back into the lap, you just aren't up today. After
-  30 minutes only the *handover* is refused: the meeting has effectively happened, and rewriting who
-  was responsible would revise history. Everyone else can still skip, with no time limit.
+- **The reason sits on the post**, one line per person, in full. Leave the box empty and you're
+  listed on your own. A reason is never posted as a thread reply, so it doesn't notify anyone — it's
+  a record, not an announcement.
+- **Clicking again reopens the dialog prefilled.** Editing rewrites the line; clearing the box
+  leaves you listed with no reason.
+- **If you're the host**, and it's **within 30 minutes of the meeting time**, the next person in the
+  lap takes over. Both posts rewrite themselves to name them, add you to `🔕 Skip:`, and a thread
+  reply says so — the one thing that does notify, because someone just picked up the job. **You keep
+  your turn** — you go back into the lap, you just aren't up today. After 30 minutes only the
+  *handover* is refused: the meeting has effectively happened, and rewriting who was responsible
+  would revise history. Everyone else can still skip, with no time limit.
 - **Anyone already skipping is passed over**, so a handover never names a host who has said they
   won't be there. They keep their place in the lap — skipping costs nobody a turn. If everyone left
   in the lap has skipped, the post says `⚠️ Nobody available to host` rather than naming someone who
@@ -399,8 +436,10 @@ says what a failure would mean.
 | 11 | `show smoke` → the **user picker** → **Approve** | That person is up next | The code isn't round-tripping through `block_id` |
 | 12 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
 | 13 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke |
-| 14 | Any fired post | Ends with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
-| 14b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:`, reason in the thread; second click opens **prefilled** and edits that same reply | A second thread reply → the notice ts isn't being stored |
+| 14 | Any fired post | Leads with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
+| 14b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
+| 14c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
+| 14d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
 | 15 | `/bee-remind add foo` | Says where `add` went | — |
 | 16 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 

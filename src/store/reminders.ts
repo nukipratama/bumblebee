@@ -17,20 +17,22 @@ const REMINDER_COLUMNS = `id,
          message,
          body_format   AS bodyFormat,
          every_n_weeks AS everyNWeeks,
+         lead_minutes  AS leadMinutes,
+         pre_message   AS preMessage,
          last_fired_at AS lastFiredAt,
          created_by    AS createdBy,
          created_at    AS createdAt`;
 
 const FIRE_COLUMNS = `id,
-         reminder_id  AS reminderId,
-         fired_on     AS firedOn,
-         fired_at     AS firedAt,
-         host_user_id AS hostUserId,
-         message_ts   AS messageTs`;
+         reminder_id     AS reminderId,
+         fired_on        AS firedOn,
+         fired_at        AS firedAt,
+         host_user_id    AS hostUserId,
+         message_ts      AS messageTs,
+         join_message_ts AS joinMessageTs`;
 
-const SKIP_COLUMNS = `user_id   AS userId,
-         reason,
-         notice_ts AS noticeTs`;
+const SKIP_COLUMNS = `user_id AS userId,
+         reason`;
 
 const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
@@ -40,8 +42,9 @@ const HOLIDAY_COLUMNS = `date,
 export function insertReminder(reminder: NewReminder): void {
   stmt(
     `INSERT INTO reminders
-       (channel_id, code, at, days, message, body_format, every_n_weeks, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (channel_id, code, at, days, message, body_format, every_n_weeks,
+        lead_minutes, pre_message, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     reminder.channelId,
     reminder.code,
@@ -50,6 +53,8 @@ export function insertReminder(reminder: NewReminder): void {
     reminder.message,
     reminder.bodyFormat,
     reminder.everyNWeeks,
+    reminder.leadMinutes,
+    reminder.preMessage,
     reminder.createdBy,
     new Date().toISOString(),
   );
@@ -97,6 +102,26 @@ export function setReminderMessage(channelId: string, code: string, message: str
   stmt(
     "UPDATE reminders SET message = ?, body_format = 'markdown' WHERE channel_id = ? AND code = ?",
   ).run(message, channelId, code);
+}
+
+export function setReminderLeadMinutes(channelId: string, code: string, leadMinutes: number): void {
+  stmt("UPDATE reminders SET lead_minutes = ? WHERE channel_id = ? AND code = ?").run(
+    leadMinutes,
+    channelId,
+    code,
+  );
+}
+
+export function setReminderPreMessage(
+  channelId: string,
+  code: string,
+  preMessage: string | null,
+): void {
+  stmt("UPDATE reminders SET pre_message = ? WHERE channel_id = ? AND code = ?").run(
+    preMessage,
+    channelId,
+    code,
+  );
 }
 
 export function setReminderCadence(channelId: string, code: string, everyNWeeks: number): void {
@@ -203,10 +228,22 @@ export function replaceHosts(
   });
 }
 
+/** Either post carries the button, so both ts columns resolve back to the one fire. */
 export function getFireByMessageTs(messageTs: string): Fire | undefined {
-  return stmt(`SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE message_ts = ?`).get(
-    messageTs,
-  ) as unknown as Fire | undefined;
+  return stmt(
+    `SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE message_ts = ? OR join_message_ts = ?`,
+  ).get(messageTs, messageTs) as unknown as Fire | undefined;
+}
+
+/** Whether the early post already fired today, which is what the post at `at` branches on. */
+export function getFireForDate(reminderId: number, firedOn: string): Fire | undefined {
+  return stmt(
+    `SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE reminder_id = ? AND fired_on = ?`,
+  ).get(reminderId, firedOn) as unknown as Fire | undefined;
+}
+
+export function setJoinMessageTs(fireId: number, messageTs: string | null): void {
+  stmt("UPDATE reminder_fires SET join_message_ts = ? WHERE id = ?").run(messageTs, fireId);
 }
 
 /** Null when a handover found nobody available, which the post reports. */
@@ -221,33 +258,21 @@ export function getSkip(fireId: number, userId: string): Skip | undefined {
 }
 
 /**
- * The row as it stood before this write, so callers can tell a new skip from a
- * changed reason. `created_at` is left alone on conflict: it is what `listSkips`
- * orders by, and editing a reason must not move you down a list people are reading.
+ * `created_at` is left alone on conflict: it is what `listSkips` orders by, and
+ * editing a reason must not move you down a list people are reading.
  */
-export function addSkip(fireId: number, userId: string, reason: string | null): Skip | undefined {
-  const previous = getSkip(fireId, userId);
+export function addSkip(fireId: number, userId: string, reason: string | null): void {
   stmt(
     `INSERT INTO reminder_skips (fire_id, user_id, created_at, reason)
      VALUES (?, ?, ?, ?)
      ON CONFLICT (fire_id, user_id) DO UPDATE SET reason = excluded.reason`,
   ).run(fireId, userId, new Date().toISOString(), reason);
-  return previous;
 }
 
-export function setSkipNoticeTs(fireId: number, userId: string, ts: string | null): void {
-  stmt("UPDATE reminder_skips SET notice_ts = ? WHERE fire_id = ? AND user_id = ?").run(
-    ts,
-    fireId,
-    userId,
-  );
-}
-
-export function listSkips(fireId: number): string[] {
-  const rows = stmt(
-    "SELECT user_id AS userId FROM reminder_skips WHERE fire_id = ? ORDER BY created_at, user_id",
-  ).all(fireId) as unknown as { userId: string }[];
-  return rows.map((row) => row.userId);
+export function listSkips(fireId: number): Skip[] {
+  return stmt(
+    `SELECT ${SKIP_COLUMNS} FROM reminder_skips WHERE fire_id = ? ORDER BY created_at, user_id`,
+  ).all(fireId) as unknown as Skip[];
 }
 
 export function lastHostedOn(reminderId: number): Map<string, string> {

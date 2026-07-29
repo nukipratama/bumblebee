@@ -11,7 +11,9 @@ import {
   setReminderAt,
   setReminderCadence,
   setReminderDays,
+  setReminderLeadMinutes,
   setReminderMessage,
+  setReminderPreMessage,
 } from "../../../store/reminders.js";
 import { EDIT_REMINDER_ACTION, NEW_REMINDER_ACTION } from "../../blocks.js";
 import {
@@ -44,15 +46,25 @@ async function readSourceMessage(
   return history.messages?.[0]?.text?.trim() || undefined;
 }
 
-function applyEdit(existing: Reminder, fields: FormFields, at: string, days: string): void {
+function applyEdit(
+  existing: Reminder,
+  fields: FormFields,
+  at: string,
+  days: string,
+  leadMinutes: number,
+): void {
   const { channelId, code } = existing;
   const roster = listHosts(existing.id);
-  const planned = plannedEdit(existing, roster, fields, at, days);
+  const planned = plannedEdit(existing, roster, fields, at, days, leadMinutes);
 
   if (planned.at !== undefined) setReminderAt(channelId, code, planned.at);
   if (planned.days !== undefined) setReminderDays(channelId, code, planned.days);
   if (planned.everyNWeeks !== undefined) setReminderCadence(channelId, code, planned.everyNWeeks);
   if (planned.message !== undefined) setReminderMessage(channelId, code, planned.message);
+  if (planned.leadMinutes !== undefined) {
+    setReminderLeadMinutes(channelId, code, planned.leadMinutes);
+  }
+  if (planned.preMessage !== undefined) setReminderPreMessage(channelId, code, planned.preMessage);
   if (planned.hosts !== undefined) {
     replaceHosts(existing.id, planned.hosts, planLap(roster, planned.hosts));
   }
@@ -148,7 +160,7 @@ export function registerReminderForm(app: App): void {
 
     try {
       if (existing) {
-        applyEdit(existing, fields, checked.at, checked.days);
+        applyEdit(existing, fields, checked.at, checked.days, checked.leadMinutes);
         const updated = getReminder(existing.channelId, existing.code)!;
         await client.chat.postMessage({
           channel: existing.channelId,
@@ -165,6 +177,8 @@ export function registerReminderForm(app: App): void {
         message: captured ?? fields.message!,
         bodyFormat: captured ? "mrkdwn" : "markdown",
         everyNWeeks: fields.everyNWeeks,
+        leadMinutes: checked.leadMinutes,
+        preMessage: fields.preMessage ?? null,
         createdBy: userId,
       });
 

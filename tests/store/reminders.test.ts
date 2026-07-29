@@ -29,7 +29,6 @@ const {
   setFireHost,
   setLap,
   setReminderMessage,
-  setSkipNoticeTs,
 } = await import("../../src/store/reminders.js");
 
 initDb();
@@ -240,18 +239,6 @@ describe("skips", () => {
     return getFireByMessageTs("444.4")!.id;
   }
 
-  it("hands back the row as it stood before the write, so a first skip is undefined", () => {
-    const fireId = fireWithSkips();
-
-    assert.equal(addSkip(fireId, "U_A", "sick"), undefined);
-    assert.deepEqual(plain(addSkip(fireId, "U_A", "on leave")!), {
-      userId: "U_A",
-      reason: "sick",
-      noticeTs: null,
-    });
-    assert.deepEqual(listSkips(fireId), ["U_A"]);
-  });
-
   it("overwrites a reason, and clears it when given null", () => {
     const fireId = fireWithSkips();
 
@@ -261,17 +248,6 @@ describe("skips", () => {
 
     addSkip(fireId, "U_A", null);
     assert.equal(getSkip(fireId, "U_A")?.reason, null);
-  });
-
-  it("round-trips the notice timestamp and clears it", () => {
-    const fireId = fireWithSkips();
-    addSkip(fireId, "U_A", "sick");
-
-    setSkipNoticeTs(fireId, "U_A", "1700000001.0002");
-    assert.equal(getSkip(fireId, "U_A")?.noticeTs, "1700000001.0002");
-
-    setSkipNoticeTs(fireId, "U_A", null);
-    assert.equal(getSkip(fireId, "U_A")?.noticeTs, null);
   });
 
   it("keeps your place in the list when you only edit the reason", () => {
@@ -289,7 +265,7 @@ describe("skips", () => {
 
     addSkip(fireId, "U_A", "changed my mind");
 
-    assert.deepEqual(listSkips(fireId), ["U_A", "U_B"]);
+    assert.deepEqual(listSkips(fireId).map((skip) => skip.userId), ["U_A", "U_B"]);
   });
 
   it("orders by when someone skipped", () => {
@@ -305,7 +281,7 @@ describe("skips", () => {
       "2026-07-27T09:10:00.000Z",
     );
 
-    assert.deepEqual(listSkips(fireId), ["U_B", "U_A"]);
+    assert.deepEqual(listSkips(fireId).map((skip) => skip.userId), ["U_B", "U_A"]);
   });
 
   it("breaks a same-instant tie on user id, so the list never reshuffles itself", () => {
@@ -321,7 +297,7 @@ describe("skips", () => {
       );
     }
 
-    assert.deepEqual(listSkips(fireId), ["U_A", "U_B"]);
+    assert.deepEqual(listSkips(fireId).map((skip) => skip.userId), ["U_A", "U_B"]);
   });
 });
 

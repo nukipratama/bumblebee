@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cadenceOk, matches, nextFire } from "../../src/domain/schedule.js";
+import {
+  cadenceOk,
+  leadFitsBeforeMidnight,
+  leadTime,
+  matches,
+  matchesLead,
+  nextFire,
+} from "../../src/domain/schedule.js";
 import type { Reminder } from "../../src/domain/types.js";
 
 const MONDAY = "2026-07-27T09:00:00";
@@ -17,6 +24,8 @@ function reminder(overrides: Partial<Reminder> = {}): Reminder {
     message: "Standup time",
     bodyFormat: "markdown",
     everyNWeeks: 1,
+    leadMinutes: 0,
+    preMessage: null,
     lastFiredAt: null,
     createdBy: "U1",
     createdAt: "2026-07-01T00:00:00.000Z",
@@ -103,5 +112,58 @@ describe("nextFire", () => {
 
   it("returns null when nothing survives the search window", () => {
     assert.equal(nextFire(reminder(), new Date(MONDAY), always), null);
+  });
+});
+
+describe("leadTime", () => {
+  it("is null without a lead, which is what every reminder had before", () => {
+    assert.equal(leadTime(reminder()), null);
+  });
+
+  it("counts back from the meeting time", () => {
+    assert.equal(leadTime(reminder({ at: "10:25", leadMinutes: 55 })), "09:30");
+  });
+
+  it("crosses the hour correctly", () => {
+    assert.equal(leadTime(reminder({ at: "09:05", leadMinutes: 10 })), "08:55");
+  });
+});
+
+describe("matchesLead", () => {
+  const early = reminder({ at: "10:25", leadMinutes: 55 });
+
+  it("matches the lead minute on a listed day", () => {
+    assert.equal(matchesLead(early, { time: "09:30", day: "monday" }), true);
+  });
+
+  it("ignores the meeting time itself, which the join post handles", () => {
+    assert.equal(matchesLead(early, { time: "10:25", day: "monday" }), false);
+  });
+
+  it("obeys the same day rule as the meeting post", () => {
+    assert.equal(matchesLead(early, { time: "09:30", day: "sunday" }), false);
+  });
+
+  it("never matches without a lead, so nothing fires twice", () => {
+    const plain = reminder({ at: "10:25" });
+    for (const time of ["10:25", "09:30", "00:00"]) {
+      assert.equal(matchesLead(plain, { time, day: "monday" }), false);
+    }
+  });
+});
+
+describe("leadFitsBeforeMidnight", () => {
+  it("allows a lead that stays inside the day", () => {
+    assert.equal(leadFitsBeforeMidnight(55, "10:25").ok, true);
+  });
+
+  it("allows one that lands exactly on midnight", () => {
+    assert.equal(leadFitsBeforeMidnight(625, "10:25").ok, true);
+  });
+
+  it("refuses one that would fire the day before, where the day rule reads wrong", () => {
+    const result = leadFitsBeforeMidnight(60, "00:15");
+    assert.equal(result.ok, false);
+    assert.match(result.ok === false ? result.error : "", /the day before/);
   });
 });

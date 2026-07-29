@@ -41,7 +41,12 @@ async function applyRun(
   const existing = getReminder(entry.channelId, code);
   if (!existing) return gone(code, "posted");
 
-  const outcome = await fireReminder(existing, client);
+  // Rehearses what the tick would do next: a reminder with a lead fires the heads-up.
+  const outcome = await fireReminder(
+    existing,
+    client,
+    existing.leadMinutes > 0 ? "heads-up" : "meeting",
+  );
   if (outcome.posted) {
     const host = outcome.host ? ` Host was ${mention(outcome.host)}, and their turn is used.` : "";
     return { ephemeral: `Posted \`${code}\`.${host}` };

@@ -14,6 +14,10 @@ export interface Reminder {
   message: string;
   bodyFormat: BodyFormat;
   everyNWeeks: number;
+  /** Minutes before `at` that the reminder fires. 0 means it fires at `at`, as it always did. */
+  leadMinutes: number;
+  /** The early post's body. Required once `leadMinutes` is set, NULL otherwise. */
+  preMessage: string | null;
   lastFiredAt: string | null;
   createdBy: string;
   createdAt: string;
@@ -27,6 +31,8 @@ export interface NewReminder {
   message: string;
   bodyFormat: BodyFormat;
   everyNWeeks: number;
+  leadMinutes: number;
+  preMessage: string | null;
   createdBy: string;
 }
 
@@ -43,6 +49,7 @@ export interface Host {
   lapOrder: number | null;
 }
 
+/** `messageTs` is the early post and `joinMessageTs` the one at `at`; either may carry the button. */
 export interface Fire {
   id: number;
   reminderId: number;
@@ -50,13 +57,12 @@ export interface Fire {
   firedAt: string;
   hostUserId: string | null;
   messageTs: string | null;
+  joinMessageTs: string | null;
 }
 
-/** `noticeTs` is the thread reply carrying `reason`, so an edit rewrites it in place. */
 export interface Skip {
   userId: string;
   reason: string | null;
-  noticeTs: string | null;
 }
 
 export interface NewFire {

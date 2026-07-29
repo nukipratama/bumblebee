@@ -4,18 +4,29 @@ import { CODE_RULE, isReminderCode } from "../domain/code.js";
 import { DAY_NAMES, EVERY_DAY, WEEKDAYS, daysColumn, daysToSelection, isEveryDay } from "../domain/days.js";
 import { fail, ok, type Parsed } from "../domain/result.js";
 import { sameRoster } from "../domain/rotation.js";
-import { cadenceFitsDays } from "../domain/schedule.js";
+import { cadenceFitsDays, leadFitsBeforeMidnight } from "../domain/schedule.js";
 import type { Host, Reminder, Skip } from "../domain/types.js";
 
 export const REMINDER_FORM = "remind_form";
 
 const DEFAULT_TIME = "09:00";
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const LEAD_PATTERN = /^\d{1,4}$/;
+const NO_LEAD = 0;
 
 export function parseAt(value: string): Parsed<string> {
   return TIME_PATTERN.test(value)
     ? ok(value)
     : fail(`\`${value}\` is not a 24-hour time — use HH:MM, like \`09:00\` or \`16:30\``);
+}
+
+/** An empty box is no heads-up, which is what every reminder had before. */
+export function parseLead(value: string | undefined): Parsed<number> {
+  if (value === undefined || value === "") return ok(NO_LEAD);
+
+  return LEAD_PATTERN.test(value)
+    ? ok(Number(value))
+    : fail(`\`${value}\` is not a number of minutes — use digits, like \`55\``);
 }
 
 /** All seven days is the daily marker, not a list of seven. */
@@ -117,6 +128,40 @@ function scheduleInputs(reminder?: Reminder, roster: readonly Host[] = []): Know
     },
     {
       type: "input",
+      block_id: "lead",
+      optional: true,
+      label: { type: "plain_text", text: "Heads-up" },
+      hint: {
+        type: "plain_text",
+        text: "Minutes before the time above. Leave empty for none. The host is picked then, so a handover can happen before the meeting.",
+      },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        placeholder: { type: "plain_text", text: "55" },
+        ...(reminder && reminder.leadMinutes > 0
+          ? { initial_value: String(reminder.leadMinutes) }
+          : {}),
+      },
+    },
+    {
+      type: "input",
+      block_id: "preMessage",
+      optional: true,
+      label: { type: "plain_text", text: "Heads-up message" },
+      hint: {
+        type: "plain_text",
+        text: "What the early post says. Required once a heads-up is set.",
+      },
+      element: {
+        type: "plain_text_input",
+        action_id: "value",
+        multiline: true,
+        ...(reminder?.preMessage ? { initial_value: reminder.preMessage } : {}),
+      },
+    },
+    {
+      type: "input",
       block_id: "days",
       label: { type: "plain_text", text: "Days" },
       element: {
@@ -195,6 +240,8 @@ export interface FormFields {
   code?: string;
   message?: string;
   at: string;
+  lead?: string;
+  preMessage?: string;
   dayNames: string[];
   everyNWeeks: number;
   hosts: string[];
@@ -214,6 +261,8 @@ export function readSubmission(values: Values): FormFields {
     code: text("code"),
     message: text("message"),
     at: text("at") ?? "",
+    lead: text("lead"),
+    preMessage: text("preMessage"),
     dayNames: (field("days")?.selected_options ?? []).map((option) => option.value),
     everyNWeeks: Number(field("cadence")?.selected_option?.value ?? 1),
     hosts: field("hosts")?.selected_users ?? [],
@@ -226,6 +275,8 @@ export interface PlannedEdit {
   days?: string;
   everyNWeeks?: number;
   message?: string;
+  leadMinutes?: number;
+  preMessage?: string | null;
   hosts?: readonly string[];
 }
 
@@ -241,6 +292,7 @@ export function plannedEdit(
   fields: FormFields,
   at: string,
   days: string,
+  leadMinutes: number,
 ): PlannedEdit {
   const planned: PlannedEdit = {};
 
@@ -250,9 +302,36 @@ export function plannedEdit(
   if (fields.message !== undefined && fields.message !== existing.message) {
     planned.message = fields.message;
   }
+  if (leadMinutes !== existing.leadMinutes) planned.leadMinutes = leadMinutes;
+
+  const preMessage = fields.preMessage ?? null;
+  if (preMessage !== existing.preMessage) planned.preMessage = preMessage;
+
   if (!sameRoster(roster, fields.hosts)) planned.hosts = fields.hosts;
 
   return planned;
+}
+
+/** The lead needs `at` to know how much room it has, and a lead that is set needs a body. */
+function leadErrors(
+  lead: Parsed<number>,
+  at: Parsed<string>,
+  preMessage: string | undefined,
+): Record<string, string> {
+  if (!lead.ok) return { lead: lead.error };
+
+  const errors: Record<string, string> = {};
+
+  if (at.ok) {
+    const room = leadFitsBeforeMidnight(lead.value, at.value);
+    if (!room.ok) errors.lead = room.error;
+  }
+  // An early post with nothing to say would be a bare "Heads Up at 10:25:".
+  if (lead.value > NO_LEAD && !preMessage) {
+    errors.preMessage = "A heads-up needs something to say.";
+  }
+
+  return errors;
 }
 
 /**
@@ -262,7 +341,7 @@ export function plannedEdit(
 export function validate(
   fields: FormFields,
   takenCodes: ReadonlySet<string>,
-): { errors: Record<string, string> } | { at: string; days: string } {
+): { errors: Record<string, string> } | { at: string; days: string; leadMinutes: number } {
   const errors: Record<string, string> = {};
 
   if (fields.code !== undefined) {
@@ -280,6 +359,9 @@ export function validate(
   const at = parseAt(fields.at);
   if (!at.ok) errors.at = at.error;
 
+  const lead = parseLead(fields.lead);
+  Object.assign(errors, leadErrors(lead, at, fields.preMessage));
+
   const days = daysFromSelection(fields.dayNames);
   if (!days.ok) {
     errors.days = days.error;
@@ -289,8 +371,8 @@ export function validate(
   const fits = cadenceFitsDays(fields.everyNWeeks, days.value);
   if (!fits.ok) errors.days = fits.error;
 
-  if (!at.ok || Object.keys(errors).length > 0) return { errors };
-  return { at: at.value, days: days.value };
+  if (!at.ok || !lead.ok || Object.keys(errors).length > 0) return { errors };
+  return { at: at.value, days: days.value, leadMinutes: lead.value };
 }
 
 export const SKIP_FORM = "reminder_skip_form";
@@ -325,7 +407,7 @@ export function skipModal(source: SkipSource, existing?: Skip): View {
         block_id: "reason",
         optional: true,
         label: { type: "plain_text", text: "Reason" },
-        hint: { type: "plain_text", text: "Optional, and posted in the thread." },
+        hint: { type: "plain_text", text: "Optional, and shown on the reminder itself." },
         element: {
           type: "plain_text_input",
           action_id: "value",

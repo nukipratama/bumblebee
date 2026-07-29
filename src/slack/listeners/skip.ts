@@ -1,7 +1,7 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { drawLapAvoiding, pendingLap } from "../../domain/rotation.js";
-import type { Fire, Reminder, Skip } from "../../domain/types.js";
+import type { Fire, Reminder } from "../../domain/types.js";
 import {
   addSkip,
   getFireByMessageTs,
@@ -11,36 +11,33 @@ import {
   listSkips,
   setFireHost,
   setLap,
-  setSkipNoticeTs,
 } from "../../store/reminders.js";
-import { SKIP_ACTION, fallbackText, reminderBlocks } from "../blocks.js";
+import {
+  fallbackText,
+  type PostBody,
+  reminderBlocks,
+  reminderBody,
+  SKIP_ACTION,
+} from "../blocks.js";
 import { SKIP_FORM, type SkipSource, readSkipReason, skipModal } from "../modals.js";
 
-/**
- * Past this the meeting has effectively happened, and rewriting who was
- * responsible revises history. Attendance has no such limit — it changes nothing
- * anyone acted on.
- */
-const HANDOVER_WINDOW_MS = 30 * 60_000;
+const HANDOVER_GRACE_MS = 30 * 60_000;
 
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
 
-/** The thread reply carrying a reason, which an edit rewrites rather than repeats. */
-type Notice =
-  | { kind: "post"; text: string }
-  | { kind: "update"; ts: string; text: string }
-  | { kind: "delete"; ts: string };
-
-interface SkipOutcome {
-  ephemeral?: string;
-  handover?: string;
-  notice?: Notice;
+/** Local, because `fired_on` is a date and the whole scheduler reads the local clock. */
+function meetingTimeMs(fire: Fire, reminder: Reminder): number {
+  return new Date(`${fire.firedOn}T${reminder.at}:00`).getTime();
 }
 
-function handoverOpen(fire: Fire, now: number): boolean {
-  // Null on rows written before fired_at existed, which reads as too old to hand over.
-  if (!fire.firedAt) return false;
-  return now - new Date(fire.firedAt).getTime() <= HANDOVER_WINDOW_MS;
+/**
+ * Past this the meeting has effectively happened, and rewriting who was
+ * responsible revises history. Measured from the meeting rather than the fire: a
+ * reminder with a lead fires while nobody is in the call yet. Attendance has no
+ * such limit — it changes nothing anyone acted on.
+ */
+function handoverOpen(fire: Fire, reminder: Reminder, now: number): boolean {
+  return now <= meetingTimeMs(fire, reminder) + HANDOVER_GRACE_MS;
 }
 
 /** Undefined when they may go ahead. Checked on the click and again on submit. */
@@ -50,29 +47,14 @@ export function handoverTooLate(
   clicker: string,
   now: number,
 ): string | undefined {
-  return fire.hostUserId === clicker && !handoverOpen(fire, now)
-    ? `\`${reminder.code}\` fired over 30 minutes ago — too late to hand over hosting.`
+  return fire.hostUserId === clicker && !handoverOpen(fire, reminder, now)
+    ? `\`${reminder.code}\` started over 30 minutes ago — too late to hand over hosting.`
     : undefined;
 }
 
-/** A reason is typed literally, so `<!channel>` in one must not become a ping. */
-function noticeText(clicker: string, reason: string): string {
-  const escaped = reason.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  return `🔕 <@${clicker}> is skipping — ${escaped}`;
-}
-
-/** Nothing to say when the reason is what it already was. */
-function noticeFor(
-  clicker: string,
-  reason: string | null,
-  previous: Skip | undefined,
-): Notice | undefined {
-  if (reason === (previous?.reason ?? null)) return undefined;
-
-  const ts = previous?.noticeTs;
-  if (!reason) return ts ? { kind: "delete", ts } : undefined;
-  const text = noticeText(clicker, reason);
-  return ts ? { kind: "update", ts, text } : { kind: "post", text };
+interface SkipOutcome {
+  ephemeral?: string;
+  handover?: string;
 }
 
 function handOver(
@@ -94,7 +76,7 @@ function handOver(
 
   // Handing over to someone who already said they're away would name a host who
   // isn't coming, so they are passed over.
-  const skipping = new Set(listSkips(fire.id));
+  const skipping = new Set(listSkips(fire.id).map((skip) => skip.userId));
   const replacement = next.find((userId) => userId !== clicker && !skipping.has(userId));
 
   // The clicker rejoins at the back, which is what keeps their turn. Anyone
@@ -102,8 +84,7 @@ function handOver(
   const remaining = next.filter((userId) => userId !== clicker && userId !== replacement);
   setLap(reminder.id, [...remaining, clicker]);
   // They clicked Skip me, so they are skipping as well as not hosting.
-  const previous = addSkip(fire.id, clicker, reason);
-  const notice = noticeFor(clicker, reason, previous);
+  addSkip(fire.id, clicker, reason);
 
   if (!replacement) {
     setFireHost(fire.id, null);
@@ -111,14 +92,12 @@ function handOver(
       handover:
         `⚠️ Everyone left in the rotation has skipped, so nobody is hosting` +
         ` — <@${clicker}> keeps their turn.`,
-      notice,
     };
   }
 
   setFireHost(fire.id, replacement);
   return {
     handover: `🔁 <@${replacement}> is hosting instead — <@${clicker}> keeps their turn.`,
-    notice,
   };
 }
 
@@ -137,8 +116,18 @@ export function applySkip({ fire, reminder, clicker, reason, now }: SkipRequest)
   const stored = reason ?? null;
   if (fire.hostUserId === clicker) return handOver(fire, reminder, clicker, stored);
 
-  const previous = addSkip(fire.id, clicker, stored);
-  return { notice: noticeFor(clicker, stored, previous) };
+  addSkip(fire.id, clicker, stored);
+  return {};
+}
+
+/** Both posts carry the button and the same skip list, so both are rewritten. */
+function postsOf(fire: Fire, reminder: Reminder): { ts: string; which: PostBody }[] {
+  const posts: { ts: string; which: PostBody }[] = [];
+  if (fire.messageTs) {
+    posts.push({ ts: fire.messageTs, which: reminder.leadMinutes > 0 ? "heads-up" : "meeting" });
+  }
+  if (fire.joinMessageTs) posts.push({ ts: fire.joinMessageTs, which: "meeting" });
+  return posts;
 }
 
 async function repost(
@@ -152,54 +141,27 @@ async function repost(
   const current = getFireByMessageTs(messageTs) ?? fire;
 
   const hasRoster = listHosts(reminder.id).length > 0;
+  const skips = listSkips(current.id);
 
-  const post = {
-    code: reminder.code,
-    body: reminder.message,
-    bodyFormat: reminder.bodyFormat,
-    host: current.hostUserId ?? undefined,
-    // A rostered reminder always names a host when it fires, so losing one means
-    // a handover found nobody available.
-    hostUnavailable: hasRoster && !current.hostUserId,
-    skips: listSkips(fire.id),
-    skippable: hasRoster,
-  };
+  for (const { ts, which } of postsOf(current, reminder)) {
+    const post = {
+      code: reminder.code,
+      ...reminderBody(reminder, which),
+      host: current.hostUserId ?? undefined,
+      // A rostered reminder always names a host when it fires, so losing one means
+      // a handover found nobody available.
+      hostUnavailable: hasRoster && !current.hostUserId,
+      skips,
+      skippable: hasRoster,
+    };
 
-  await client.chat.update({
-    channel: channelId,
-    ts: messageTs,
-    blocks: reminderBlocks(post),
-    text: fallbackText(post),
-  });
-}
-
-async function applyNotice(
-  client: WebClient,
-  notice: Notice,
-  fireId: number,
-  clicker: string,
-  source: SkipSource,
-): Promise<void> {
-  if (notice.kind === "delete") {
-    // Someone may have deleted the reply by hand; the row must stop pointing at it either way.
-    await client.chat.delete({ channel: source.channelId, ts: notice.ts }).catch(() => undefined);
-    setSkipNoticeTs(fireId, clicker, null);
-    return;
+    await client.chat.update({
+      channel: channelId,
+      ts,
+      blocks: reminderBlocks(post),
+      text: fallbackText(post),
+    });
   }
-
-  if (notice.kind === "update") {
-    await client.chat.update({ channel: source.channelId, ts: notice.ts, text: notice.text });
-    return;
-  }
-
-  const posted = await client.chat.postMessage({
-    channel: source.channelId,
-    thread_ts: source.messageTs,
-    text: notice.text,
-    unfurl_links: false,
-    unfurl_media: false,
-  });
-  if (posted.ts) setSkipNoticeTs(fireId, clicker, posted.ts);
 }
 
 async function openSkipForm(body: BlockAction<ButtonAction>, client: WebClient): Promise<void> {
@@ -281,21 +243,17 @@ async function settle(
   source: SkipSource,
   logger: Logger,
 ): Promise<void> {
-  const report = async (error: unknown, what: string): Promise<void> => {
-    logger.error(`${what} failed`, error);
+  try {
+    await repost(client, fire, reminder, source.channelId, source.messageTs);
+  } catch (error) {
+    logger.error("updating the post failed", error);
     await client.chat
       .postEphemeral({
         channel: source.channelId,
         user: clicker,
-        text: `I recorded that, but ${what} failed — the post may have been deleted.`,
+        text: "I recorded that, but updating the post failed — it may have been deleted.",
       })
       .catch(() => undefined);
-  };
-
-  try {
-    await repost(client, fire, reminder, source.channelId, source.messageTs);
-  } catch (error) {
-    await report(error, "updating the post");
   }
 
   if (outcome.ephemeral) {
@@ -306,20 +264,14 @@ async function settle(
     });
   }
 
+  // The reason rides on the posts themselves; a handover is the one thing that
+  // has to reach the person who just picked up the job.
   if (outcome.handover) {
     await client.chat.postMessage({
       channel: source.channelId,
       thread_ts: source.messageTs,
       text: outcome.handover,
     });
-  }
-
-  if (outcome.notice) {
-    try {
-      await applyNotice(client, outcome.notice, fire.id, clicker, source);
-    } catch (error) {
-      await report(error, "posting the reason");
-    }
   }
 
   logger.info(`skip on \`${reminder.code}\` by ${clicker}`);

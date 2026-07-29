@@ -16,8 +16,9 @@ const {
   insertReminder,
   listHosts,
   replaceHosts,
+  setFireHost,
 } = await import("../../src/store/reminders.js");
-const { fireReminder } = await import("../../src/app/fire.js");
+const { fireReminder, postJoin } = await import("../../src/app/fire.js");
 
 initDb();
 
@@ -49,7 +50,7 @@ describe("fireReminder — posting", () => {
     const reminder = withRoster(["U_A", "U_B"]);
     const { client, posted } = fakeClient();
 
-    const outcome = await fireReminder(reminder, client);
+    const outcome = await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(outcome, { posted: true, host: "U_A" });
     assert.equal(posted.length, 1);
@@ -60,7 +61,7 @@ describe("fireReminder — posting", () => {
     const reminder = withRoster(["U_A", "U_B"]);
     const { client } = fakeClient(async () => ({ ts: "999.9" }));
 
-    await fireReminder(reminder, client);
+    await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B"]);
     assert.notEqual(getReminderById(reminder.id)?.lastFiredAt, null);
@@ -71,7 +72,7 @@ describe("fireReminder — posting", () => {
     const reminder = withRoster(["U_A", "U_B"], ["U_B"]);
     const { client } = fakeClient();
 
-    await fireReminder(reminder, client);
+    await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)).sort(), ["U_A", "U_B"]);
   });
@@ -80,7 +81,7 @@ describe("fireReminder — posting", () => {
     const reminder = seed();
     const { client } = fakeClient();
 
-    const outcome = await fireReminder(reminder, client);
+    const outcome = await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(outcome, { posted: true, host: undefined });
   });
@@ -93,7 +94,7 @@ describe("fireReminder — a failed post costs nobody their turn", () => {
       throw new Error("slack is down");
     });
 
-    await assert.rejects(() => fireReminder(reminder, client), /slack is down/);
+    await assert.rejects(() => fireReminder(reminder, client, "meeting"), /slack is down/);
   });
 
   it("leaves the lap untouched, so the same person is still up next", async () => {
@@ -102,7 +103,7 @@ describe("fireReminder — a failed post costs nobody their turn", () => {
       throw new Error("slack is down");
     });
 
-    await fireReminder(reminder, client).catch(() => undefined);
+    await fireReminder(reminder, client, "meeting").catch(() => undefined);
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_A", "U_B"]);
   });
@@ -113,7 +114,7 @@ describe("fireReminder — a failed post costs nobody their turn", () => {
       throw new Error("slack is down");
     });
 
-    await fireReminder(reminder, client).catch(() => undefined);
+    await fireReminder(reminder, client, "meeting").catch(() => undefined);
 
     assert.equal(getReminderById(reminder.id)?.lastFiredAt, null);
     const fires = stmt("SELECT COUNT(*) AS n FROM reminder_fires WHERE reminder_id = ?").get(
@@ -129,7 +130,7 @@ describe("fireReminder — guards", () => {
     insertHoliday({ date: today(), addedBy: "U_X", addedInChannel: "C1" });
     const { client, posted } = fakeClient();
 
-    const outcome = await fireReminder(reminder, client);
+    const outcome = await fireReminder(reminder, client, "meeting");
 
     assert.equal(outcome.posted, false);
     assert.match(outcome.posted === false ? outcome.reason : "", /holiday/);
@@ -143,7 +144,7 @@ describe("fireReminder — guards", () => {
     stmt("UPDATE reminders SET last_fired_at = ? WHERE id = ?").run(daysAgo(3), reminder.id);
     const { client, posted } = fakeClient();
 
-    const outcome = await fireReminder(getReminderById(reminder.id)!, client);
+    const outcome = await fireReminder(getReminderById(reminder.id)!, client, "meeting");
 
     assert.equal(outcome.posted, false);
     assert.match(outcome.posted === false ? outcome.reason : "", /cadence/);
@@ -155,7 +156,7 @@ describe("fireReminder — guards", () => {
     stmt("UPDATE reminders SET last_fired_at = ? WHERE id = ?").run(daysAgo(14), reminder.id);
     const { client } = fakeClient();
 
-    const outcome = await fireReminder(getReminderById(reminder.id)!, client);
+    const outcome = await fireReminder(getReminderById(reminder.id)!, client, "meeting");
 
     assert.equal(outcome.posted, true);
   });
@@ -168,14 +169,14 @@ describe("fireReminder — the post itself", () => {
   it("carries a Skip me button only when someone could take over", async () => {
     const rotating = withRoster(["U_A", "U_B"]);
     const { client, posted } = fakeClient();
-    await fireReminder(rotating, client);
+    await fireReminder(rotating, client, "meeting");
 
     assert.ok(blockTypes(posted[0]!.blocks).includes("actions"));
 
     stmt("DELETE FROM reminders").run();
     const plain = seed({ code: "plain" });
     const solo = fakeClient();
-    await fireReminder(plain, solo.client);
+    await fireReminder(plain, solo.client, "meeting");
 
     assert.ok(!blockTypes(solo.posted[0]!.blocks).includes("actions"));
   });
@@ -183,7 +184,7 @@ describe("fireReminder — the post itself", () => {
   it("suppresses the link card, which outlives every later update of the post", async () => {
     const reminder = seed({ message: "Standup — https://meet.google.com/abc-defg-hij" });
     const { client, posted } = fakeClient();
-    await fireReminder(reminder, client);
+    await fireReminder(reminder, client, "meeting");
 
     assert.equal(posted[0]!.unfurl_links, false);
     assert.equal(posted[0]!.unfurl_media, false);
@@ -193,7 +194,7 @@ describe("fireReminder — the post itself", () => {
     const reminder = seed({ bodyFormat: "mrkdwn", message: "*bold in Slack*" });
     const { client, posted } = fakeClient();
 
-    await fireReminder(reminder, client);
+    await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(posted[0]!.blocks?.[0], {
       type: "section",
@@ -205,8 +206,114 @@ describe("fireReminder — the post itself", () => {
     const reminder = withRoster(["U_A"]);
     const { client, posted } = fakeClient();
 
-    await fireReminder(reminder, client);
+    await fireReminder(reminder, client, "meeting");
 
     assert.ok((posted[0]!.text ?? "").length > 0);
+  });
+});
+
+describe("fireReminder — the heads-up body", () => {
+  const lead = { leadMinutes: 55, preMessage: "Daily Standup", at: "10:25" };
+
+  it("prefixes the pre-message with the meeting time", async () => {
+    const reminder = seed(lead);
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "heads-up");
+
+    assert.deepEqual(posted[0]!.blocks?.[0], {
+      type: "markdown",
+      text: "Heads Up at 10:25: Daily Standup",
+    });
+  });
+
+  it("posts the meeting body untouched when that is what was asked for", async () => {
+    const reminder = seed(lead);
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "meeting");
+
+    assert.deepEqual(posted[0]!.blocks?.[0], { type: "markdown", text: "Standup time!" });
+  });
+
+  it("falls back to the meeting body rather than posting a bare prefix", async () => {
+    const reminder = seed({ leadMinutes: 55, preMessage: null });
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "heads-up");
+
+    assert.deepEqual(posted[0]!.blocks?.[0], { type: "markdown", text: "Standup time!" });
+  });
+});
+
+describe("postJoin", () => {
+  const lead = { leadMinutes: 55, preMessage: "Daily Standup" };
+
+  it("names the host the early fire settled on, and posts the meeting body", async () => {
+    const reminder = seed(lead);
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    const { client, posted } = fakeClient();
+    await fireReminder(reminder, client, "heads-up");
+
+    const outcome = await postJoin(reminder, client);
+
+    assert.deepEqual(outcome, { posted: true, host: "U_A" });
+    assert.deepEqual(posted[1]!.blocks?.[0], { type: "markdown", text: "Standup time!" });
+  });
+
+  it("names the replacement when a handover happened since the heads-up", async () => {
+    const reminder = seed(lead);
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    const { client } = fakeClient(async () => ({ ts: "999.9" }));
+    await fireReminder(reminder, client, "heads-up");
+    setFireHost(getFireByMessageTs("999.9")!.id, "U_B");
+
+    const outcome = await postJoin(reminder, client);
+
+    assert.deepEqual(outcome, { posted: true, host: "U_B" });
+  });
+
+  it("records its own message ts, so the button on it finds the same fire", async () => {
+    const reminder = seed(lead);
+    const { client } = fakeClient(async () => ({ ts: "999.9" }));
+    await fireReminder(reminder, client, "heads-up");
+
+    await postJoin(reminder, client);
+
+    assert.equal(getFireByMessageTs("999.9")?.joinMessageTs, "999.9");
+  });
+
+  it("fires outright when the lead time was missed, so nobody loses their turn", async () => {
+    const reminder = seed(lead);
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    const { client, posted } = fakeClient();
+
+    const outcome = await postJoin(reminder, client);
+
+    assert.deepEqual(outcome, { posted: true, host: "U_A" });
+    assert.equal(posted.length, 1);
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B"]);
+  });
+
+  it("advances the lap exactly once across both posts", async () => {
+    const reminder = seed(lead);
+    replaceHosts(reminder.id, ["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    const { client } = fakeClient();
+
+    await fireReminder(reminder, client, "heads-up");
+    await postJoin(getReminderById(reminder.id)!, client);
+
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_C"]);
+  });
+
+  it("posts nothing on a holiday, having never fired that day", async () => {
+    const reminder = seed(lead);
+    insertHoliday({ date: today(), addedBy: "U_A", addedInChannel: "C1" });
+    const { client, posted } = fakeClient();
+
+    const outcome = await postJoin(reminder, client);
+
+    assert.equal(outcome.posted, false);
+    assert.equal(posted.length, 0);
   });
 });

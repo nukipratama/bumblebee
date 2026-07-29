@@ -28,6 +28,8 @@ export function newReminder(overrides: Partial<NewReminder> = {}): NewReminder {
     message: "Standup time!",
     bodyFormat: "markdown",
     everyNWeeks: 1,
+    leadMinutes: 0,
+    preMessage: null,
     createdBy: "U_CREATOR",
     ...overrides,
   };

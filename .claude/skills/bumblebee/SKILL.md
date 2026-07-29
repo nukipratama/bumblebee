@@ -29,9 +29,9 @@ src/
 ├── domain/                     # pure — imports nothing outside domain/
 │   ├── types.ts                # Reminder, NewReminder, Host, Holiday, Fire, NewFire, BodyFormat
 │   ├── result.ts               # Parsed<T> + ok/fail
-│   ├── clock.ts                # localParts, daysBetween
+│   ├── clock.ts                # localParts, daysBetween, minutesSinceMidnight, timeAtMinutes
 │   ├── days.ts                 # DAY_NAMES, WEEKDAYS, EVERY_DAY, dayMatches, daysColumn
-│   ├── schedule.ts             # matches, cadenceOk, nextFire, cadenceFitsDays, formatCadence
+│   ├── schedule.ts             # matches, matchesLead, leadTime, cadenceOk, nextFire, leadFitsBeforeMidnight
 │   ├── rotation.ts             # shuffle, drawLap, drawLapAvoiding, planLap, pendingLap, move*
 │   └── code.ts                 # isReminderCode, suggestCode
 ├── store/
@@ -39,7 +39,7 @@ src/
 │   ├── reminders.ts            # reminders, holidays, rosters, fire history, skips
 │   └── ai-usage.ts             # record / summarize AI token usage
 ├── app/
-│   ├── fire.ts                 # fireReminder — the one path that posts a reminder
+│   ├── fire.ts                 # fireReminder (the one fire path) + postJoin
 │   └── scheduler.ts            # startScheduler, getLastTickAt, the Jakarta TZ assertion
 ├── ai/index.ts                 # AzureOpenAI client + generateReply() — returns raw Markdown
 └── slack/
@@ -82,7 +82,7 @@ tests/                          # mirrors the src/ path of what it covers
 ## Data rules
 
 - **Schema changes** → *append* a `CREATE TABLE`/`ALTER TABLE` string to the `migrations` array in
-  `store/database.ts`. Index = version; never edit an existing entry. Currently 11 entries.
+  `store/database.ts`. Index = version; never edit an existing entry. Currently 15 entries.
 - **DB access** → always via the memoized `stmt()` helper in `store/database.ts`. Never `db.prepare`
   at module top level: the tables don't exist until `initDb()` runs.
 - **Host rotation state is one column**: `reminder_hosts.lap_order` is a number while that person is
@@ -148,10 +148,17 @@ tests/                          # mirrors the src/ path of what it covers
   would break its second job: anyone declaring they're away, independently of the host's handover.
   The `🔕 Skip:` line is the shared confirmation, and the dialog — reopening prefilled and retitled —
   carries the per-person one, because it is the only surface rendered for one viewer.
-- **A skip reason lives in the thread, never on the post.** `reminder_skips.notice_ts` remembers the
-  reply so an edit rewrites it in place; without that, correcting a typo would stack a second reply
-  under the first. Reasons are typed into a `plain_text_input`, so escape `&<>` before they reach an
-  mrkdwn message or `<!channel>` in one pings the channel on every repost.
+- **A skip reason lives on the post, never in the thread.** `🔕 Skip:` is a bulleted list, one
+  `• @user - reason` line each, so an edit is just a repaint and a long reason wraps under its own
+  bullet. Reasons are typed into a `plain_text_input`, so escape `&<>` in `blocks.ts` or
+  `<!channel>` in one pings the channel on every repost. **A handover is the one thing that still
+  posts a thread reply** — a card edit notifies nobody, and someone just picked up the job.
+- **A reminder can post twice.** `reminders.lead_minutes` fires it early with `pre_message` (rendered
+  as `Heads Up at {at}: …`); `at` then posts the normal body via `postJoin`. One `reminder_fires` row
+  backs both, so `message_ts` **or** `join_message_ts` resolves to it, `repost` rewrites both, and
+  each post's body comes from `reminderBody(reminder, which)` — repainting both with one body would
+  overwrite the heads-up. The handover window runs to **meeting time + 30 min**, not fire + 30, which
+  collapses to the old rule at `lead_minutes = 0`.
 - Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
   `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
