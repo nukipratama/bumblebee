@@ -49,7 +49,7 @@ export type FormSource =
 
 const titleCase = (day: string): string => day[0]!.toUpperCase() + day.slice(1);
 
-const dayOption = (day: string) => ({
+export const dayOption = (day: string) => ({
   text: { type: "plain_text" as const, text: titleCase(day) },
   value: day,
 });

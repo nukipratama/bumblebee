@@ -86,6 +86,47 @@ const migrations: string[] = [
   `ALTER TABLE reminder_fires ADD COLUMN join_message_ts TEXT`,
   // Reasons render on the posts themselves now, so there is no reply to remember.
   `ALTER TABLE reminder_skips DROP COLUMN notice_ts`,
+  // Soft-deleted via `active`, not dropped — a removed repo's past rounds still
+  // reference it by id, and a hard delete would either orphan them or cascade.
+  `CREATE TABLE cf_repos (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     name       TEXT    NOT NULL UNIQUE,
+     active     INTEGER NOT NULL DEFAULT 1,
+     created_at TEXT    NOT NULL
+   )`,
+  // Single row (id fixed at 1). Only meaningful for the recurring trigger — a
+  // manual Start now posts to whatever channel it was run from and never reads this.
+  `CREATE TABLE cf_schedule (
+     id              INTEGER PRIMARY KEY CHECK (id = 1),
+     channel_id      TEXT    NOT NULL,
+     at_time         TEXT    NOT NULL,
+     days            TEXT    NOT NULL,
+     last_fired_date TEXT
+   )`,
+  `CREATE TABLE cf_rounds (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     started_by TEXT NOT NULL,
+     started_at TEXT NOT NULL
+   )`,
+  `CREATE TABLE cf_messages (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     round_id   INTEGER NOT NULL REFERENCES cf_rounds(id) ON DELETE CASCADE,
+     repo_id    INTEGER NOT NULL REFERENCES cf_repos(id),
+     channel_id TEXT    NOT NULL,
+     message_ts TEXT    NOT NULL,
+     UNIQUE (round_id, repo_id)
+   )`,
+  // Latest status per squad per message — a re-click overwrites via upsert rather
+  // than piling up rows, since only the latest click is ever shown.
+  `CREATE TABLE cf_responses (
+     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+     message_id   INTEGER NOT NULL REFERENCES cf_messages(id) ON DELETE CASCADE,
+     squad        TEXT    NOT NULL,
+     status       TEXT    NOT NULL CHECK (status IN ('all_merged', 'no_mr')),
+     responded_by TEXT    NOT NULL,
+     responded_at TEXT    NOT NULL,
+     UNIQUE (message_id, squad)
+   )`,
   // AI replies are gone, so there is no usage left to record.
   `DROP TABLE ai_usage`,
 ];

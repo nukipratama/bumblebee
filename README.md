@@ -27,6 +27,7 @@ no redeploy.
 | **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason, shown on the post. The host hands over to the next person; anyone else is just listed as skipping. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, this channel's reminder count, next fire and last scheduler tick. |
+| **Code Freeze reports** | `/bee-cf-report` | Posts one message per configured repo with a button per squad (`All Merged` / `No MR`). Each post updates live as squads click, with a thread reply saying who clicked what. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
 
@@ -68,7 +69,8 @@ At [api.slack.com/apps](https://api.slack.com/apps):
    | `groups:history` | the same, in private channels |
 
    Adding scopes later requires **Reinstall to Workspace**.
-4. **Slash Commands** → create `/bee-status` and `/bee-remind`. Socket Mode needs no request URL.
+4. **Slash Commands** → create `/bee-status`, `/bee-remind` and `/bee-cf-report`. Socket Mode needs
+   no request URL.
 5. **Interactivity & Shortcuts** → turn **Interactivity** on, then **Create New Shortcut** → **On
    messages**, named `Make this a reminder`, with callback ID exactly `remind_from_message`.
    **Reinstall to Workspace** afterwards.
@@ -248,6 +250,33 @@ Reminders without a roster don't carry the button — there'd be nobody to hand 
 never hides or relabels itself: a fired reminder is one shared message, so anything it said would be
 said to everyone. The dialog is where you learn you're already down as skipping.
 
+### Code Freeze reports with `/bee-cf-report`
+
+`/bee-cf-report` is one entry point, no subcommand args — a settings summary with two buttons:
+
+```
+/bee-cf-report
+> Code Freeze Report Configuration
+> Repos: mamikos-web, mamipay-web, pms, pms-ss, harvest-lct
+> Recurring: every weekday at 09:00 (Asia/Jakarta), posts to #mamikos-esls — last run 2026-07-29
+>
+> [ Edit settings ]  [ Start now ]
+```
+
+- **Edit settings** opens a form: the repo list (one per line, replaces the whole list on submit),
+  and an optional recurring schedule (days + time). Leaving the days empty means no recurring
+  schedule — **Start now** still works manually.
+- **The recurring schedule has no separate channel field.** Setting days/time captures whichever
+  channel the form was opened from as the schedule's posting channel — that's the only signal a
+  scheduler tick, which has no invoking channel of its own, can go on.
+- **Start now** posts one message per configured repo into the channel it was run from — never a
+  separately configured one — after a native "Are you sure?" confirmation, since it posts several
+  real messages at once.
+- Each repo's message lists all four squads (`SS`, `LIMO`, `Core BE`, `Core FE`), each with its own
+  **All Merged** / **No MR** button pair directly underneath. Anyone can click any squad's button —
+  clicking again later just overwrites the latest status. Every click asks for confirmation first,
+  rewrites the message in place, and drops a thread reply saying who clicked what.
+
 ## Architecture
 
 Four layers, and dependencies only ever point downward:
@@ -270,16 +299,21 @@ src/
 │   ├── days.ts                 the day vocabulary and the stored `days` value
 │   ├── schedule.ts             matches / cadenceOk / nextFire / cadenceFitsDays
 │   ├── rotation.ts             lap draw and reordering
-│   └── code.ts                 reminder-code validation and slug suggestion
+│   ├── code.ts                 reminder-code validation and slug suggestion
+│   └── cf.ts                   squads, CfStatus, status formatting for Code Freeze reports
 ├── store/
 │   ├── database.ts             connection, append-only migrations, stmt/transaction helpers
-│   └── reminders.ts            reminders, holidays, rosters, fire history, skips
+│   ├── reminders.ts            reminders, holidays, rosters, fire history, skips
+│   └── cf.ts                   Code Freeze repos, schedule, rounds, messages, responses
 ├── app/
 │   ├── fire.ts                 the single path that posts a reminder
-│   └── scheduler.ts            minute tick, TZ assertion, last-tick state
+│   ├── scheduler.ts            minute tick, TZ assertion, last-tick state
+│   └── cf.ts                   startCfRound — posts one message per repo
 └── slack/
     ├── blocks.ts               reminder post, confirmation buttons, list rows
     ├── modals.ts               the reminder form: create · from-message · edit
+    ├── cf-blocks.ts             Code Freeze repo post + settings summary blocks
+    ├── cf-modals.ts             the Code Freeze settings form
     ├── text.ts                 mrkdwn formatting helpers (pure)
     ├── pending.ts              confirmations awaiting a click
     └── listeners/
@@ -287,24 +321,30 @@ src/
         ├── status.ts           /bee-status
         ├── shortcut.ts         "Make this a reminder" → opens the form
         ├── skip.ts             the Skip me button and its reason dialog
-        └── remind/             /bee-remind, split by subcommand family
-            ├── index.ts        register + subcommand dispatch + Approve/Reject
-            ├── modal.ts        the form's view handler + New/Edit buttons
-            ├── reminders.ts    list · show
-            ├── rotation.ts     Skip host · put someone up next
-            ├── prompt.ts       raise a confirmation from a button
-            ├── holidays.ts     the shared list + its date picker
-            ├── apply.ts        what each approved confirmation actually does
-            ├── context.ts      the command context shared by the handlers
-            └── help.ts         /bee-remind help
+        ├── remind/             /bee-remind, split by subcommand family
+        │   ├── index.ts        register + subcommand dispatch + Approve/Reject
+        │   ├── modal.ts        the form's view handler + New/Edit buttons
+        │   ├── reminders.ts    list · show
+        │   ├── rotation.ts     Skip host · put someone up next
+        │   ├── prompt.ts       raise a confirmation from a button
+        │   ├── holidays.ts     the shared list + its date picker
+        │   ├── apply.ts        what each approved confirmation actually does
+        │   ├── context.ts      the command context shared by the handlers
+        │   └── help.ts         /bee-remind help
+        └── cf/                 /bee-cf-report and the squad status buttons
+            ├── index.ts        register every Code Freeze listener
+            ├── settings.ts     /bee-cf-report — the settings summary
+            ├── modal.ts        Edit settings form + its view handler
+            ├── start.ts        Start now → startCfRound
+            └── status.ts       the squad status button click handler
 ```
 
 Tests live in `tests/`, mirroring the layout of what they cover:
 
 ```
 tests/
-├── domain/                     clock · code · rotation · schedule
-└── slack/                      args · blocks · pending
+├── domain/                     clock · code · rotation · schedule · cf
+└── slack/                      args · blocks · pending · cf-blocks
 ```
 
 Everything with a test is pure, which is the point of the layering: `domain/` and the pure parts of
@@ -381,8 +421,9 @@ docker compose logs -f
 ### Persistence
 
 State lives in SQLite (Node's built-in `node:sqlite`) at `DB_PATH`. It holds reminders, holidays,
-rosters, one row per reminder fired, and who skipped each occurrence — all surfaced through
-`/bee-status` and `/bee-remind show`.
+rosters, one row per reminder fired, who skipped each occurrence, and the Code Freeze repo list,
+schedule, rounds and per-squad responses — all surfaced through `/bee-status`, `/bee-remind show`
+and `/bee-cf-report`.
 
 In production the file sits in the `bumblebee-data` **Docker named volume**, so it survives deploys.
 A named volume is deliberate: Docker seeds it from the image's `node`-owned `/app/data`, so the
