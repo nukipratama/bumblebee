@@ -2,15 +2,9 @@ import type { ViewStateValue } from "@slack/bolt";
 import type { View } from "@slack/web-api";
 import type { CfSchedule } from "../domain/cf.js";
 import { DAY_NAMES, daysToSelection } from "../domain/days.js";
+import { dayOption } from "./modals.js";
 
 export const CF_SETTINGS_FORM = "cf_settings_form";
-
-const titleCase = (day: string): string => day[0]!.toUpperCase() + day.slice(1);
-
-const dayOption = (day: string) => ({
-  text: { type: "plain_text" as const, text: titleCase(day) },
-  value: day,
-});
 
 /** A view submission carries no channel of its own, so it rides through here. */
 export interface CfSettingsSource {

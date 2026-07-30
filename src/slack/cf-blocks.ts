@@ -4,9 +4,11 @@ import {
   squadStatusLine,
   statusLabel,
   type CfResponse,
+  type CfSchedule,
   type CfStatus,
   type Squad,
 } from "../domain/cf.js";
+import { escapeMrkdwn } from "./blocks.js";
 import { formatDays } from "./text.js";
 
 export const CF_STATUS_ACTION = "cf_status_set";
@@ -53,7 +55,7 @@ export function cfRepoBlocks(repo: { name: string }, responses: readonly CfRespo
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Code Freeze Status* — \`${repo.name}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
+        text: `*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
       },
     },
     ...SQUADS.flatMap((squad) => squadBlocks(squad, responses)),
@@ -61,12 +63,12 @@ export function cfRepoBlocks(repo: { name: string }, responses: readonly CfRespo
 }
 
 export function cfFallbackText(repo: { name: string }): string {
-  return `Code Freeze Status — ${repo.name}`;
+  return `Code Freeze Status — ${escapeMrkdwn(repo.name)}`;
 }
 
 export interface CfSettingsSummary {
   repoNames: readonly string[];
-  schedule?: { channelId: string; at: string; days: string; lastFiredDate: string | null } | undefined;
+  schedule?: CfSchedule | undefined;
 }
 
 function scheduleLine(summary: CfSettingsSummary): string {
@@ -78,7 +80,10 @@ function scheduleLine(summary: CfSettingsSummary): string {
 }
 
 export function cfSettingsBlocks(summary: CfSettingsSummary): KnownBlock[] {
-  const repoLine = summary.repoNames.length > 0 ? summary.repoNames.join(", ") : "none configured";
+  const repoLine =
+    summary.repoNames.length > 0
+      ? summary.repoNames.map(escapeMrkdwn).join(", ")
+      : "none configured";
 
   return [
     { type: "section", text: { type: "mrkdwn", text: "*Code Freeze Report Configuration*" } },
