@@ -46,7 +46,7 @@ export function reminderBody(
 const mention = (userId: string): string => `<@${userId}>`;
 
 /** A reason is typed literally, so `<!channel>` in one must not become a ping. */
-function escapeMrkdwn(text: string): string {
+export function escapeMrkdwn(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 

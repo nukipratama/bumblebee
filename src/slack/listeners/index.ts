@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import { registerCf } from "./cf/index.js";
 import { registerMention } from "./mention.js";
 import { registerRemind } from "./remind/index.js";
 import { registerShortcut } from "./shortcut.js";
@@ -11,4 +12,5 @@ export function registerListeners(app: App): void {
   registerRemind(app);
   registerShortcut(app);
   registerSkip(app);
+  registerCf(app);
 }
