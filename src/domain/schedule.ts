@@ -18,7 +18,10 @@ export function formatCadence(everyNWeeks: number): string {
   return everyNWeeks === EVERY_WEEK ? "every week" : `every ${everyNWeeks} weeks`;
 }
 
-export function matches(reminder: Reminder, now: Pick<WallClock, "time" | "day">): boolean {
+export function matches(
+  reminder: Pick<Reminder, "at" | "days">,
+  now: Pick<WallClock, "time" | "day">,
+): boolean {
   return reminder.at === now.time && dayMatches(reminder.days, now.day);
 }
 
