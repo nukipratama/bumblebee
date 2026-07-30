@@ -13,9 +13,6 @@ import type { NewReminder } from "../../src/domain/types.js";
 export function useTempDatabase(): void {
   process.env.SLACK_BOT_TOKEN ??= "xoxb-test";
   process.env.SLACK_APP_TOKEN ??= "xapp-test";
-  process.env.AZURE_OPENAI_ENDPOINT ??= "https://azure.invalid";
-  process.env.AZURE_OPENAI_API_KEY ??= "test-key";
-  process.env.AZURE_OPENAI_DEPLOYMENT ??= "test-deployment";
   process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), "bumblebee-test-")), "bumblebee.db");
 }
 

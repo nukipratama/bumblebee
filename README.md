@@ -3,8 +3,8 @@
 The LIMO team's general-purpose Slack bot — successor to **Optimus**.
 
 Bumblebee connects to Slack over **Socket Mode** (an outbound WebSocket, so no public URL and no
-ingress to open). It answers questions with **Azure OpenAI** and posts **scheduled reminders** that
-anyone can manage from Slack itself, with no redeploy.
+ingress to open). It posts **scheduled reminders** that anyone can manage from Slack itself, with
+no redeploy.
 
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
@@ -20,14 +20,13 @@ anyone can manage from Slack itself, with no redeploy.
 
 | Feature | How you use it | Details |
 | --- | --- | --- |
-| **AI replies** | `@Bumblebee what's 2+2?` | Answers via Azure OpenAI. Thread-aware — ask a follow-up in the same thread and it keeps context. |
 | **Reminder from a message** | ⋮ **More actions** → **Make this a reminder** | Turns a message you already wrote into a schedule, posting it back byte-identical. |
 | **Reminder commands** | `/bee-remind list` · `show` · `holiday` | Three read-only commands; creating, editing, running and removing are buttons and dialogs. |
 | **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Heads-up** | The **Heads-up** field on the reminder form | Posts an early notice N minutes before, naming the host then — so a handover can happen before the meeting starts. |
 | **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason, shown on the post. The host hands over to the next person; anyone else is just listed as skipping. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
-| **Status** | `/bee-status` | Uptime line, AI token usage, this channel's reminder count, next fire and last scheduler tick. |
+| **Status** | `/bee-status` | Uptime line, this channel's reminder count, next fire and last scheduler tick. |
 | **Code Freeze reports** | `/bee-cf-report` | Posts one message per configured repo with a button per squad (`All Merged` / `No MR`). Each post updates live as squads click, with a thread reply saying who clicked what. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
@@ -45,7 +44,7 @@ npm run dev
 ```
 
 You're up when the log reads `⚡️ Bumblebee running (socket mode)`. In Slack, `/invite @Bumblebee`
-into a test channel and try `@Bumblebee hello`.
+into a test channel and try `/bee-status`.
 
 > [!WARNING]
 > **Never run `npm run dev` while the deployed container is up.** Both connect with the same tokens,
@@ -65,10 +64,9 @@ At [api.slack.com/apps](https://api.slack.com/apps):
    | Scope | Needed for |
    | --- | --- |
    | `chat:write` | posting anything at all |
-   | `app_mentions:read` | hearing `@Bumblebee` |
    | `commands` | the slash commands |
-   | `channels:history` | thread-aware AI replies in public channels |
-   | `groups:history` | the same in private channels |
+   | `channels:history` | reading the source message for "Make this a reminder", in public channels |
+   | `groups:history` | the same, in private channels |
 
    Adding scopes later requires **Reinstall to Workspace**.
 4. **Slash Commands** → create `/bee-status`, `/bee-remind` and `/bee-cf-report`. Socket Mode needs
@@ -76,8 +74,7 @@ At [api.slack.com/apps](https://api.slack.com/apps):
 5. **Interactivity & Shortcuts** → turn **Interactivity** on, then **Create New Shortcut** → **On
    messages**, named `Make this a reminder`, with callback ID exactly `remind_from_message`.
    **Reinstall to Workspace** afterwards.
-6. **Event Subscriptions** → enable → subscribe to the bot event `app_mention`.
-7. `/invite @Bumblebee` into a channel. Slash commands work anywhere, but a reminder can only post in
+6. `/invite @Bumblebee` into a channel. Slash commands work anywhere, but a reminder can only post in
    a channel the bot has joined.
 
 > [!IMPORTANT]
@@ -93,7 +90,7 @@ At [api.slack.com/apps](https://api.slack.com/apps):
 <details>
 <summary>App display settings (optional, for flavor)</summary>
 
-- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack — an AI-powered assistant for the LIMO team. 🐝🤖`
+- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack for the LIMO team. 🐝🤖`
 - **Background color:** `#111111`
 
 </details>
@@ -107,10 +104,6 @@ one fails the container immediately rather than at first use.
 | --- | --- | --- |
 | `SLACK_BOT_TOKEN` | ✅ | Bot User OAuth Token (`xoxb-…`) |
 | `SLACK_APP_TOKEN` | ✅ | App-level token for Socket Mode (`xapp-…`) |
-| `AZURE_OPENAI_ENDPOINT` | ✅ | Resource endpoint URL |
-| `AZURE_OPENAI_API_KEY` | ✅ | Resource API key |
-| `AZURE_OPENAI_DEPLOYMENT` | ✅ | Chat model **deployment** name (not the base model name) |
-| `AZURE_OPENAI_API_VERSION` | — | Default `2024-10-21` |
 | `LOG_LEVEL` | — | `debug` \| `info` \| `warn` \| `error`, default `info` |
 | `DB_PATH` | — | Default `./data/bumblebee.db`; the container uses `/app/data/bumblebee.db` |
 
@@ -118,11 +111,6 @@ Never commit real tokens. In production the secrets live at `/opt/bumblebee/.env
 nothing flows through GitHub Actions secrets.
 
 ## Using it
-
-### Asking it things
-
-Mention the bot anywhere it's been invited. A top-level mention is a single question; mention it
-inside a thread and it reads that thread first, so follow-ups work.
 
 ### Creating a reminder from a message you wrote
 
@@ -316,13 +304,11 @@ src/
 ├── store/
 │   ├── database.ts             connection, append-only migrations, stmt/transaction helpers
 │   ├── reminders.ts            reminders, holidays, rosters, fire history, skips
-│   ├── ai-usage.ts             per-request token accounting
 │   └── cf.ts                   Code Freeze repos, schedule, rounds, messages, responses
 ├── app/
 │   ├── fire.ts                 the single path that posts a reminder
 │   ├── scheduler.ts            minute tick, TZ assertion, last-tick state
 │   └── cf.ts                   startCfRound — posts one message per repo
-├── ai/index.ts                 Azure OpenAI client + generateReply()
 └── slack/
     ├── blocks.ts               reminder post, confirmation buttons, list rows
     ├── modals.ts               the reminder form: create · from-message · edit
@@ -333,7 +319,6 @@ src/
     └── listeners/
         ├── index.ts            wires every listener to the app
         ├── status.ts           /bee-status
-        ├── mention.ts          app_mention → thread-aware AI reply
         ├── shortcut.ts         "Make this a reminder" → opens the form
         ├── skip.ts             the Skip me button and its reason dialog
         ├── remind/             /bee-remind, split by subcommand family
@@ -436,9 +421,9 @@ docker compose logs -f
 ### Persistence
 
 State lives in SQLite (Node's built-in `node:sqlite`) at `DB_PATH`. It holds reminders, holidays,
-rosters, one row per reminder fired, who skipped each occurrence, per-request Azure OpenAI token
-usage, and the Code Freeze repo list, schedule, rounds and per-squad responses — all surfaced
-through `/bee-status`, `/bee-remind show` and `/bee-cf-report`.
+rosters, one row per reminder fired, who skipped each occurrence, and the Code Freeze repo list,
+schedule, rounds and per-squad responses — all surfaced through `/bee-status`, `/bee-remind show`
+and `/bee-cf-report`.
 
 In production the file sits in the `bumblebee-data` **Docker named volume**, so it survives deploys.
 A named volume is deliberate: Docker seeds it from the image's `node`-owned `/app/data`, so the
@@ -466,23 +451,22 @@ says what a failure would mean.
 |---|---|---|---|
 | 1 | Container logs | `⚡️ Bumblebee running (socket mode)`, no `TZ misconfigured` | — |
 | 2 | `docker exec bumblebee date` | `WIB` / `+0700` | `tzdata` missing from the image |
-| 3 | `@Bumblebee what's 2+2?`, then a follow-up in that thread | Replies in-thread, keeps context | Missing `channels:history` / `groups:history` |
-| 4 | `/bee-remind help` | Four commands, nothing retired | — |
-| 5 | `/bee-remind list` in an empty channel | "No reminders yet" **and** `+ New reminder` | Without the button there is no way to create one from scratch |
-| 6 | **+ New reminder** → name `smoke`, a minute away, message `hello` → **Create** | Announced in channel, then posts on the minute | No dialog → Interactivity off. Submit does nothing → `callback_id` ≠ `remind_form` |
-| 7 | **Edit** on that row | Opens **prefilled** | Blank fields → the prefill path |
-| 8 | Add two hosts, **Save**. `show smoke`, note the order. **Edit**, change **only the time**, **Save**, `show` again | Rotation order **unchanged** | A redraw — `plannedEdit` isn't guarding `replaceHosts` |
-| 9 | **Run now** → **Approve** | Posts; **the list is still there** above the prompt | The prompt used `replace_original` |
-| 10 | `show smoke` → **Skip host** → **Approve** | Up-next moves to the back | — |
-| 11 | `show smoke` → the **user picker** → **Approve** | That person is up next | The code isn't round-tripping through `block_id` |
-| 12 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
-| 13 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke |
-| 14 | Any fired post | Leads with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
-| 14b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
-| 14c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
-| 14d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
-| 15 | `/bee-remind add foo` | Says where `add` went | — |
-| 16 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
+| 3 | `/bee-remind help` | Four commands, nothing retired | — |
+| 4 | `/bee-remind list` in an empty channel | "No reminders yet" **and** `+ New reminder` | Without the button there is no way to create one from scratch |
+| 5 | **+ New reminder** → name `smoke`, a minute away, message `hello` → **Create** | Announced in channel, then posts on the minute | No dialog → Interactivity off. Submit does nothing → `callback_id` ≠ `remind_form` |
+| 6 | **Edit** on that row | Opens **prefilled** | Blank fields → the prefill path |
+| 7 | Add two hosts, **Save**. `show smoke`, note the order. **Edit**, change **only the time**, **Save**, `show` again | Rotation order **unchanged** | A redraw — `plannedEdit` isn't guarding `replaceHosts` |
+| 8 | **Run now** → **Approve** | Posts; **the list is still there** above the prompt | The prompt used `replace_original` |
+| 9 | `show smoke` → **Skip host** → **Approve** | Up-next moves to the back | — |
+| 10 | `show smoke` → the **user picker** → **Approve** | That person is up next | The code isn't round-tripping through `block_id` |
+| 11 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
+| 12 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke. No dialog at all → missing `channels:history` / `groups:history` |
+| 13 | Any fired post | Leads with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
+| 13b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
+| 13c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
+| 13d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
+| 14 | `/bee-remind add foo` | Says where `add` went | — |
+| 15 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 
 Buttons on a `list` older than ~30 minutes stop responding — Slack expires the slash command's
 `response_url` (30 min / 5 uses). Re-run `list`. That is expected, not a regression.

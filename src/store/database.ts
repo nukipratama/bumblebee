@@ -127,6 +127,8 @@ const migrations: string[] = [
      responded_at TEXT    NOT NULL,
      UNIQUE (message_id, squad)
    )`,
+  // AI replies are gone, so there is no usage left to record.
+  `DROP TABLE ai_usage`,
 ];
 
 export function initDb(): void {

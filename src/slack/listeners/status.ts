@@ -2,23 +2,9 @@ import type { App } from "@slack/bolt";
 import { getLastTickAt } from "../../app/scheduler.js";
 import { localParts } from "../../domain/clock.js";
 import { nextFire } from "../../domain/schedule.js";
-import { getAiUsageSummary } from "../../store/ai-usage.js";
 import { listHolidayDates, listReminders } from "../../store/reminders.js";
 
 const STATUS_LINE = "🐝 Bumblebee is online and reporting for duty. Roll out! ⚡️";
-
-function formatUsage(): string {
-  const { requests, promptTokens, completionTokens, totalTokens, since } = getAiUsageSummary();
-
-  if (requests === 0) return "*AI usage:* no requests recorded yet.";
-
-  return [
-    "*AI usage*",
-    `• requests: ${requests}`,
-    `• tokens: ${totalTokens} (prompt ${promptTokens} / completion ${completionTokens})`,
-    `• since: ${since}`,
-  ].join("\n");
-}
 
 function formatReminders(channelId: string): string {
   const reminders = listReminders(channelId);
@@ -48,11 +34,6 @@ export function registerStatus(app: App): void {
   app.command("/bee-status", async ({ ack, command, respond, logger }) => {
     await ack();
     let body = STATUS_LINE;
-    try {
-      body += `\n\n${formatUsage()}`;
-    } catch (error) {
-      logger.error("Failed to read AI usage summary", error);
-    }
     try {
       body += `\n\n${formatReminders(command.channel_id)}`;
     } catch (error) {
