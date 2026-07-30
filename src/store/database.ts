@@ -86,6 +86,8 @@ const migrations: string[] = [
   `ALTER TABLE reminder_fires ADD COLUMN join_message_ts TEXT`,
   // Reasons render on the posts themselves now, so there is no reply to remember.
   `ALTER TABLE reminder_skips DROP COLUMN notice_ts`,
+  // AI replies are gone, so there is no usage left to record.
+  `DROP TABLE ai_usage`,
 ];
 
 export function initDb(): void {

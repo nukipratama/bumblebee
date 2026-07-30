@@ -1,14 +1,14 @@
 ---
 name: bumblebee
-description: Project conventions and codebase map for the bumblebee repo — the LIMO team's general-purpose Slack bot (Slack Bolt over Socket Mode + Azure OpenAI), its TS/ESM layout, the branch/PR/CI workflow, and the homelab deploy. Use when writing or reviewing code here, wiring a new Slack listener, touching config/secrets, or when unsure how a change deploys.
+description: Project conventions and codebase map for the bumblebee repo — the LIMO team's general-purpose Slack bot (Slack Bolt over Socket Mode), its TS/ESM layout, the branch/PR/CI workflow, and the homelab deploy. Use when writing or reviewing code here, wiring a new Slack listener, touching config/secrets, or when unsure how a change deploys.
 ---
 
 # bumblebee conventions
 
 Bumblebee is the LIMO team's general-purpose Slack bot, successor to Optimus. It runs as a
 long-running container that connects to Slack over **Socket Mode** (outbound WebSocket, no public
-endpoint) and replies via **Azure OpenAI**. It also posts **scheduled reminders** from SQLite, managed
-at runtime via `/bee-remind`, each optionally rotating through a roster of hosts.
+endpoint). It posts **scheduled reminders** from SQLite, managed at runtime via `/bee-remind`, each
+optionally rotating through a roster of hosts.
 
 ## Layering
 
@@ -36,12 +36,10 @@ src/
 │   └── code.ts                 # isReminderCode, suggestCode
 ├── store/
 │   ├── database.ts             # connection, migrations array, initDb, stmt(), transaction()
-│   ├── reminders.ts            # reminders, holidays, rosters, fire history, skips
-│   └── ai-usage.ts             # record / summarize AI token usage
+│   └── reminders.ts            # reminders, holidays, rosters, fire history, skips
 ├── app/
 │   ├── fire.ts                 # fireReminder (the one fire path) + postJoin
 │   └── scheduler.ts            # startScheduler, getLastTickAt, the Jakarta TZ assertion
-├── ai/index.ts                 # AzureOpenAI client + generateReply() — returns raw Markdown
 └── slack/
     ├── blocks.ts               # reminder post blocks, confirm buttons, the list rows + their ids
     ├── modals.ts               # two views (pure): the reminder form + the skip reason dialog
@@ -50,7 +48,6 @@ src/
     └── listeners/
         ├── index.ts            # registerListeners(app)
         ├── status.ts           # /bee-status
-        ├── mention.ts          # app_mention → thread-aware Azure OpenAI reply
         ├── shortcut.ts         # "Make this a reminder" message shortcut → opens the form
         ├── skip.ts             # Skip me button + reason dialog — host handover, skip list
         └── remind/
@@ -119,11 +116,6 @@ tests/                          # mirrors the src/ path of what it covers
 
 ## Slack specifics
 
-- Reply to the AI with **`chat.postMessage({ markdown_text })`** — Slack renders standard Markdown
-  natively, so the model's output needs no mrkdwn conversion. Do **not** re-add a markdown-to-mrkdwn
-  library.
-- Thread context comes from `client.conversations.replies` (needs `channels:history` +
-  `groups:history` scopes); a top-level mention is single-turn.
 - Bot scopes live in the Slack app config; the README's "Slack app setup" is the source of truth.
 - Two app-config settings are **load-bearing and fail silently** if missed: *Interactivity* must be
   on or every button and dialog does nothing; and the message shortcut's callback ID must be exactly
@@ -172,9 +164,7 @@ tests/                          # mirrors the src/ path of what it covers
 - Local: `.env` (gitignored) from `.env.example`. Never commit real tokens.
 - Prod (homelab): secrets live at **`/opt/bumblebee/.env`** on the host, mounted into the runner —
   nothing flows through GitHub Actions secrets.
-- Required vars: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `AZURE_OPENAI_ENDPOINT`,
-  `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (+ optional `LOG_LEVEL`,
-  `AZURE_OPENAI_API_VERSION`, `DB_PATH`).
+- Required vars: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` (+ optional `LOG_LEVEL`, `DB_PATH`).
 
 ## Local dev
 
