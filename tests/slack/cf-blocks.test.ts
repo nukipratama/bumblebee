@@ -67,6 +67,18 @@ describe("cfRepoBlocks", () => {
       .flatMap((block) => block.elements.map((el) => (el as { action_id: string }).action_id));
     assert.equal(new Set(ids).size, ids.length);
   });
+
+  it("prepends the mention group when one is configured", () => {
+    const [header] = cfRepoBlocks({ name: "mamikos-web" }, [], { id: "S123", handle: "esls" });
+    assert.ok(header && header.type === "section");
+    assert.match((header.text as { text: string }).text, /^<!subteam\^S123> \*Code Freeze Status\*/);
+  });
+
+  it("has no mention prefix when none is configured", () => {
+    const [header] = cfRepoBlocks({ name: "mamikos-web" }, []);
+    assert.ok(header && header.type === "section");
+    assert.match((header.text as { text: string }).text, /^\*Code Freeze Status\*/);
+  });
 });
 
 describe("cfSettingsBlocks", () => {
@@ -83,13 +95,13 @@ describe("cfSettingsBlocks", () => {
   });
 
   it("shows 'not configured' when there is no recurring schedule", () => {
-    const [, , scheduleLine] = cfSettingsBlocks({ repoNames: [] });
+    const [, , , scheduleLine] = cfSettingsBlocks({ repoNames: [] });
     assert.ok(scheduleLine && scheduleLine.type === "section");
     assert.match((scheduleLine.text as { text: string }).text, /not configured/);
   });
 
   it("describes the recurring schedule when set", () => {
-    const [, , scheduleLine] = cfSettingsBlocks({
+    const [, , , scheduleLine] = cfSettingsBlocks({
       repoNames: [],
       schedule: { channelId: "C1", at: "09:00", days: "monday,tuesday", lastFiredDate: "2026-07-29" },
     });
@@ -98,6 +110,21 @@ describe("cfSettingsBlocks", () => {
     assert.match(text, /09:00/);
     assert.match(text, /<#C1>/);
     assert.match(text, /last run 2026-07-29/);
+  });
+
+  it("shows 'not configured' when there is no mention group", () => {
+    const [, , mentionLine] = cfSettingsBlocks({ repoNames: [] });
+    assert.ok(mentionLine && mentionLine.type === "section");
+    assert.match((mentionLine.text as { text: string }).text, /not configured/);
+  });
+
+  it("shows the mention group handle when set", () => {
+    const [, , mentionLine] = cfSettingsBlocks({
+      repoNames: [],
+      mentionGroup: { id: "S123", handle: "esls" },
+    });
+    assert.ok(mentionLine && mentionLine.type === "section");
+    assert.match((mentionLine.text as { text: string }).text, /@esls/);
   });
 
   it("includes Edit settings and Start now buttons, with Start now requiring confirmation", () => {

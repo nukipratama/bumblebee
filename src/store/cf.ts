@@ -1,4 +1,4 @@
-import type { CfRepo, CfResponse, CfSchedule, CfStatus } from "../domain/cf.js";
+import type { CfMentionGroup, CfRepo, CfResponse, CfSchedule, CfStatus } from "../domain/cf.js";
 import { stmt, transaction } from "./database.js";
 
 export function listRepos(): CfRepo[] {
@@ -47,6 +47,32 @@ export function clearSchedule(): void {
 
 export function setScheduleLastFiredDate(date: string): void {
   stmt("UPDATE cf_schedule SET last_fired_date = ? WHERE id = 1").run(date);
+}
+
+export function getMentionGroup(): CfMentionGroup | undefined {
+  const row = stmt(
+    `SELECT mention_group_id AS id, mention_group_handle AS handle
+       FROM cf_settings WHERE id = 1`,
+  ).get() as unknown as CfMentionGroup | undefined;
+  return row?.id ? row : undefined;
+}
+
+export function setMentionGroup(id: string, handle: string): void {
+  stmt(
+    `INSERT INTO cf_settings (id, mention_group_id, mention_group_handle)
+     VALUES (1, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       mention_group_id     = excluded.mention_group_id,
+       mention_group_handle = excluded.mention_group_handle`,
+  ).run(id, handle);
+}
+
+export function clearMentionGroup(): void {
+  stmt(
+    `INSERT INTO cf_settings (id, mention_group_id, mention_group_handle)
+     VALUES (1, NULL, NULL)
+     ON CONFLICT (id) DO UPDATE SET mention_group_id = NULL, mention_group_handle = NULL`,
+  ).run();
 }
 
 export function startRound(startedBy: string): number {
