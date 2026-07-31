@@ -1,12 +1,6 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
-import type { CfMentionGroup } from "../../../domain/cf.js";
-import {
-  clearMentionGroup,
-  clearSchedule,
-  replaceRepos,
-  setMentionGroup,
-  setSchedule,
-} from "../../../store/cf.js";
+import type { CfMentionTarget } from "../../../domain/cf.js";
+import { clearSchedule, replaceMentions, replaceRepos, setSchedule } from "../../../store/cf.js";
 import { CF_EDIT_SETTINGS_ACTION, cfSettingsBlocks } from "../../cf-blocks.js";
 import {
   CF_SETTINGS_FORM,
@@ -54,26 +48,32 @@ export function registerCfSettingsForm(app: App): void {
       schedule = { at: at.value, days: days.value };
     }
 
-    let mentionGroup: CfMentionGroup | undefined;
-    if (fields.mentionGroupHandle) {
+    const mentions: CfMentionTarget[] = fields.mentionUserIds.map((id) => ({
+      kind: "user",
+      id,
+    }));
+
+    if (fields.mentionGroupHandles.length > 0) {
       try {
         const { usergroups } = await client.usergroups.list({});
-        const match = usergroups?.find(
-          (group) => group.handle?.toLowerCase() === fields.mentionGroupHandle.toLowerCase(),
-        );
-        if (!match?.id || !match.handle) {
+        const notFound: string[] = [];
+        for (const handle of fields.mentionGroupHandles) {
+          const match = usergroups?.find((group) => group.handle?.toLowerCase() === handle.toLowerCase());
+          if (match?.id && match.handle) mentions.push({ kind: "usergroup", id: match.id, handle: match.handle });
+          else notFound.push(handle);
+        }
+        if (notFound.length > 0) {
           await ack({
             response_action: "errors",
-            errors: { mentionGroup: `No user group with handle @${fields.mentionGroupHandle}.` },
+            errors: { mentionGroups: `No user group with handle @${notFound.join(", @")}.` },
           });
           return;
         }
-        mentionGroup = { id: match.id, handle: match.handle };
       } catch (error) {
-        logger.error("looking up the Code Freeze mention group failed", error);
+        logger.error("looking up the Code Freeze mention groups failed", error);
         await ack({
           response_action: "errors",
-          errors: { mentionGroup: "Couldn't look up that group — check the logs." },
+          errors: { mentionGroups: "Couldn't look up those groups — check the logs." },
         });
         return;
       }
@@ -85,8 +85,7 @@ export function registerCfSettingsForm(app: App): void {
       replaceRepos(fields.repoNames);
       if (schedule) setSchedule(channelId, schedule.at, schedule.days);
       else clearSchedule();
-      if (mentionGroup) setMentionGroup(mentionGroup.id, mentionGroup.handle);
-      else clearMentionGroup();
+      replaceMentions(mentions);
 
       await client.chat.postMessage({
         channel: channelId,
