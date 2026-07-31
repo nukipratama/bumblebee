@@ -29,7 +29,7 @@ export async function startCfRound(
     });
 
     // Only a successful post gets recorded — same as fireReminder's recordFire.
-    if (posted.ts) recordMessage(roundId, repo.id, channelId, posted.ts);
+    if (posted.ts) recordMessage(roundId, repo.id, channelId, posted.ts, repo.squads);
   }
 
   return { repoCount: repos.length };

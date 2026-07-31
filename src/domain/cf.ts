@@ -6,6 +6,22 @@ export type CfStatus = "all_merged" | "no_mr";
 export interface CfRepo {
   id: number;
   name: string;
+  squads: readonly Squad[];
+}
+
+export function isSquad(value: string): value is Squad {
+  return (SQUADS as readonly string[]).includes(value);
+}
+
+export function squadsColumn(chosen: readonly Squad[]): string | null {
+  if (chosen.length === 0 || chosen.length === SQUADS.length) return null;
+  const set = new Set(chosen);
+  return SQUADS.filter((squad) => set.has(squad)).join(",");
+}
+
+export function squadsFromColumn(column: string | null): readonly Squad[] {
+  if (!column) return SQUADS;
+  return column.split(",").filter(isSquad);
 }
 
 /** `at`/`days` match `Reminder`'s field names so `domain/schedule.ts#matches` reads either. */

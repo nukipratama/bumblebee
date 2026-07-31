@@ -4,6 +4,7 @@ import {
   squadStatusLine,
   statusLabel,
   type CfMentionTarget,
+  type CfRepo,
   type CfResponse,
   type CfSchedule,
   type CfStatus,
@@ -36,7 +37,7 @@ function responseFor(squad: Squad, responses: readonly CfResponse[]): CfResponse
 }
 
 /** A `section`'s accessory holds one element, so two buttons need their own `actions` block. */
-function squadBlocks(squad: Squad, responses: readonly CfResponse[]): KnownBlock[] {
+function squadBlocks(repoName: string, squad: Squad, responses: readonly CfResponse[]): KnownBlock[] {
   return [
     { type: "section", text: { type: "mrkdwn", text: squadStatusLine(squad, responseFor(squad, responses)) } },
     {
@@ -47,7 +48,7 @@ function squadBlocks(squad: Squad, responses: readonly CfResponse[]): KnownBlock
         text: { type: "plain_text" as const, text: statusLabel(status) },
         value: JSON.stringify({ squad, status } satisfies CfButtonValue),
         confirm: {
-          title: { type: "plain_text" as const, text: "Confirm status" },
+          title: { type: "plain_text" as const, text: `Code Freeze Status — ${repoName}` },
           text: { type: "mrkdwn" as const, text: `Set *${squad}* to *${statusLabel(status)}*?` },
           confirm: { type: "plain_text" as const, text: "Yes" },
           deny: { type: "plain_text" as const, text: "Cancel" },
@@ -62,20 +63,21 @@ function mentionText(target: CfMentionTarget): string {
 }
 
 export function cfRepoBlocks(
-  repo: { name: string },
+  repo: { name: string; squads: readonly Squad[] },
   responses: readonly CfResponse[],
   mentions: readonly CfMentionTarget[] = [],
 ): KnownBlock[] {
   const prefix = mentions.length > 0 ? `${mentions.map(mentionText).join(" ")} ` : "";
   return [
+    { type: "header", text: { type: "plain_text", text: `Code Freeze Status — ${repo.name}` } },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `${prefix}*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
+        text: `${prefix}Please report status of your Code Freeze (MR to develop) below.`,
       },
     },
-    ...SQUADS.flatMap((squad) => squadBlocks(squad, responses)),
+    ...repo.squads.flatMap((squad) => squadBlocks(repo.name, squad, responses)),
   ];
 }
 
@@ -84,7 +86,7 @@ export function cfFallbackText(repo: { name: string }): string {
 }
 
 export interface CfSettingsSummary {
-  repoNames: readonly string[];
+  repos: readonly CfRepo[];
   schedule?: CfSchedule | undefined;
   mentions: readonly CfMentionTarget[];
 }
@@ -103,11 +105,14 @@ function scheduleLine(summary: CfSettingsSummary): string {
   return `Recurring: every ${formatDays(days)} at ${at} (Asia/Jakarta), posts to <#${channelId}>${lastRun}`;
 }
 
+function describeRepo(repo: CfRepo): string {
+  const name = escapeMrkdwn(repo.name);
+  return repo.squads.length === SQUADS.length ? name : `${name} (${repo.squads.join(", ")})`;
+}
+
 export function cfSettingsBlocks(summary: CfSettingsSummary): KnownBlock[] {
   const repoLine =
-    summary.repoNames.length > 0
-      ? summary.repoNames.map(escapeMrkdwn).join(", ")
-      : "none configured";
+    summary.repos.length > 0 ? summary.repos.map(describeRepo).join(", ") : "none configured";
 
   return [
     { type: "section", text: { type: "mrkdwn", text: "*Code Freeze Report Configuration*" } },
@@ -205,7 +210,7 @@ export function describeCfSettingsChange(
   after: CfSettingsSummary,
 ): string | undefined {
   const changes = [
-    ...diffRepoNames(before.repoNames, after.repoNames),
+    ...diffRepoNames(before.repos.map((repo) => repo.name), after.repos.map((repo) => repo.name)),
     ...diffMentions(before.mentions, after.mentions),
     ...diffSchedule(before.schedule, after.schedule),
   ];

@@ -9,15 +9,22 @@ import {
   type CfButtonValue,
   type CfSettingsSummary,
 } from "../../src/slack/cf-blocks.js";
-import type { CfResponse } from "../../src/domain/cf.js";
+import { SQUADS, type CfRepo, type CfResponse } from "../../src/domain/cf.js";
+
+const repo = (name: string, squads: readonly CfRepo["squads"][number][] = SQUADS): CfRepo => ({
+  id: 1,
+  name,
+  squads,
+});
 
 const typeOf = (blocks: ReturnType<typeof cfRepoBlocks>): string[] =>
   blocks.map((block) => block.type);
 
 describe("cfRepoBlocks", () => {
-  it("renders a header section followed by one section+actions pair per squad", () => {
-    const blocks = cfRepoBlocks({ name: "mamikos-web" }, []);
+  it("renders a repo name header, an intro section, then one section+actions pair per squad", () => {
+    const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     assert.deepEqual(typeOf(blocks), [
+      "header",
       "section",
       "section",
       "actions",
@@ -30,15 +37,21 @@ describe("cfRepoBlocks", () => {
     ]);
   });
 
+  it("puts 'Code Freeze Status — {repo}' in the large header block", () => {
+    const [header] = cfRepoBlocks(repo("mamikos-web"), []);
+    assert.ok(header && header.type === "header");
+    assert.equal(header.text.text, "Code Freeze Status — mamikos-web");
+  });
+
   it("shows a waiting placeholder for a squad with no response", () => {
-    const [, squadSection] = cfRepoBlocks({ name: "mamikos-web" }, []);
+    const [, , squadSection] = cfRepoBlocks(repo("mamikos-web"), []);
     assert.ok(squadSection && squadSection.type === "section");
     assert.match((squadSection.text as { text: string }).text, /not yet reported/);
   });
 
   it("shows the reported status and reporter", () => {
     const responses: CfResponse[] = [{ squad: "SS", status: "all_merged", respondedBy: "U1" }];
-    const [, squadSection] = cfRepoBlocks({ name: "mamikos-web" }, responses);
+    const [, , squadSection] = cfRepoBlocks(repo("mamikos-web"), responses);
     assert.ok(squadSection && squadSection.type === "section");
     const text = (squadSection.text as { text: string }).text;
     assert.match(text, /All Merged/);
@@ -46,7 +59,7 @@ describe("cfRepoBlocks", () => {
   });
 
   it("gives each squad its own actions block with 2 buttons carrying a confirm dialog", () => {
-    const blocks = cfRepoBlocks({ name: "mamikos-web" }, []);
+    const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     const actionsBlocks = blocks.filter((block) => block.type === "actions");
     assert.equal(actionsBlocks.length, 4);
 
@@ -64,7 +77,7 @@ describe("cfRepoBlocks", () => {
   });
 
   it("gives every status button a unique action_id", () => {
-    const blocks = cfRepoBlocks({ name: "mamikos-web" }, []);
+    const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     const ids = blocks
       .filter((block) => block.type === "actions")
       .flatMap((block) => block.elements.map((el) => (el as { action_id: string }).action_id));
@@ -72,43 +85,79 @@ describe("cfRepoBlocks", () => {
   });
 
   it("prepends every configured mention, users and groups mixed", () => {
-    const [header] = cfRepoBlocks({ name: "mamikos-web" }, [], [
+    const [, introSection] = cfRepoBlocks(repo("mamikos-web"), [], [
       { kind: "user", id: "U1" },
       { kind: "usergroup", id: "S123", handle: "esls" },
     ]);
-    assert.ok(header && header.type === "section");
-    assert.match((header.text as { text: string }).text, /^<@U1> <!subteam\^S123> \*Code Freeze Status\*/);
+    assert.ok(introSection && introSection.type === "section");
+    assert.match(
+      (introSection.text as { text: string }).text,
+      /^<@U1> <!subteam\^S123> Please report/,
+    );
   });
 
   it("has no mention prefix when none is configured", () => {
-    const [header] = cfRepoBlocks({ name: "mamikos-web" }, []);
-    assert.ok(header && header.type === "section");
-    assert.match((header.text as { text: string }).text, /^\*Code Freeze Status\*/);
+    const [, introSection] = cfRepoBlocks(repo("mamikos-web"), []);
+    assert.ok(introSection && introSection.type === "section");
+    assert.match((introSection.text as { text: string }).text, /^Please report/);
+  });
+
+  it("renders only the repo's restricted squads, not all 4", () => {
+    const blocks = cfRepoBlocks(repo("pms", ["SS", "LIMO"]), []);
+    const actionsBlocks = blocks.filter((block) => block.type === "actions");
+    assert.equal(actionsBlocks.length, 2);
+    const sectionTexts = blocks
+      .filter((block) => block.type === "section")
+      .map((block) => (block.text as { text: string }).text);
+    assert.ok(sectionTexts.some((text) => text.includes("*SS*")));
+    assert.ok(sectionTexts.some((text) => text.includes("*LIMO*")));
+    assert.ok(!sectionTexts.some((text) => text.includes("*Core BE*")));
+  });
+
+  it("titles the confirm dialog with the repo name", () => {
+    const blocks = cfRepoBlocks(repo("pms"), []);
+    const actions = blocks.find((block) => block.type === "actions");
+    assert.ok(actions && actions.type === "actions");
+    const button = actions.elements[0];
+    assert.ok(button && button.type === "button" && button.confirm);
+    assert.equal((button.confirm.title as { text: string }).text, "Code Freeze Status — pms");
   });
 });
 
 describe("cfSettingsBlocks", () => {
   it("shows 'none configured' when there are no repos", () => {
-    const [, repoLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
+    const [, repoLine] = cfSettingsBlocks({ repos: [], mentions: [] });
     assert.ok(repoLine && repoLine.type === "section");
     assert.match((repoLine.text as { text: string }).text, /none configured/);
   });
 
   it("lists configured repos", () => {
-    const [, repoLine] = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
+    const [, repoLine] = cfSettingsBlocks({
+      repos: [repo("mamikos-web"), repo("pms")],
+      mentions: [],
+    });
     assert.ok(repoLine && repoLine.type === "section");
     assert.match((repoLine.text as { text: string }).text, /mamikos-web, pms/);
   });
 
+  it("annotates a restricted repo with its squads, leaves an unrestricted one plain", () => {
+    const [, repoLine] = cfSettingsBlocks({
+      repos: [repo("mamikos-web"), repo("pms", ["SS", "LIMO"])],
+      mentions: [],
+    });
+    assert.ok(repoLine && repoLine.type === "section");
+    assert.match((repoLine.text as { text: string }).text, /mamikos-web, pms \(SS, LIMO\)/);
+  });
+
   it("shows 'not configured' when there is no recurring schedule", () => {
-    const [, , , scheduleLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
+    const [, , , scheduleLine] = cfSettingsBlocks({ repos: [], mentions: [] });
     assert.ok(scheduleLine && scheduleLine.type === "section");
     assert.match((scheduleLine.text as { text: string }).text, /not configured/);
   });
 
   it("describes the recurring schedule when set", () => {
     const [, , , scheduleLine] = cfSettingsBlocks({
-      repoNames: [],
+      repos: [],
       mentions: [],
       schedule: { channelId: "C1", at: "09:00", days: "monday,tuesday", lastFiredDate: "2026-07-29" },
     });
@@ -120,14 +169,14 @@ describe("cfSettingsBlocks", () => {
   });
 
   it("shows 'not configured' when there are no mentions", () => {
-    const [, , mentionLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
+    const [, , mentionLine] = cfSettingsBlocks({ repos: [], mentions: [] });
     assert.ok(mentionLine && mentionLine.type === "section");
     assert.match((mentionLine.text as { text: string }).text, /not configured/);
   });
 
   it("shows every configured mention, users and groups mixed", () => {
     const [, , mentionLine] = cfSettingsBlocks({
-      repoNames: [],
+      repos: [],
       mentions: [
         { kind: "user", id: "U1" },
         { kind: "usergroup", id: "S123", handle: "esls" },
@@ -140,7 +189,7 @@ describe("cfSettingsBlocks", () => {
   });
 
   it("includes Edit settings, Start now, and Remove config buttons, all requiring confirmation except Edit", () => {
-    const blocks = cfSettingsBlocks({ repoNames: [], mentions: [] });
+    const blocks = cfSettingsBlocks({ repos: [], mentions: [] });
     const actions = blocks.at(-1);
     assert.ok(actions && actions.type === "actions");
     assert.equal(actions.elements.length, 3);
@@ -154,11 +203,14 @@ describe("cfSettingsBlocks", () => {
 });
 
 describe("describeCfSettingsChange", () => {
-  const empty: CfSettingsSummary = { repoNames: [], mentions: [] };
+  const empty: CfSettingsSummary = { repos: [], mentions: [] };
 
   it("reports an added repo", () => {
-    const before: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms"] };
-    const after: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms", "pms-ss"] };
+    const before: CfSettingsSummary = { ...empty, repos: [repo("mamikos-web"), repo("pms")] };
+    const after: CfSettingsSummary = {
+      ...empty,
+      repos: [repo("mamikos-web"), repo("pms"), repo("pms-ss")],
+    };
     const change = describeCfSettingsChange("U1", before, after);
     assert.match(change ?? "", /<@U1> updated the Code Freeze Report configuration/);
     assert.match(change ?? "", /added repo `pms-ss`/);
@@ -186,7 +238,7 @@ describe("describeCfSettingsChange", () => {
   });
 
   it("reports multiple removed repos on a full clear", () => {
-    const before: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms"] };
+    const before: CfSettingsSummary = { ...empty, repos: [repo("mamikos-web"), repo("pms")] };
     assert.match(
       describeCfSettingsChange("U1", before, empty) ?? "",
       /removed repos `mamikos-web`, `pms`/,

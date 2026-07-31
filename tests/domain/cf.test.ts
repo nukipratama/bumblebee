@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { squadStatusLine, statusEmoji, statusLabel } from "../../src/domain/cf.js";
+import {
+  SQUADS,
+  isSquad,
+  squadStatusLine,
+  squadsColumn,
+  squadsFromColumn,
+  statusEmoji,
+  statusLabel,
+} from "../../src/domain/cf.js";
 import { matches } from "../../src/domain/schedule.js";
 
 describe("statusLabel / statusEmoji", () => {
@@ -27,6 +35,48 @@ describe("squadStatusLine", () => {
       respondedBy: "U123",
     });
     assert.equal(line, "*LIMO* — ❌ No MR (<@U123>)");
+  });
+});
+
+describe("isSquad", () => {
+  it("is true for each configured squad", () => {
+    for (const squad of SQUADS) assert.equal(isSquad(squad), true);
+  });
+
+  it("is false for an unknown value", () => {
+    assert.equal(isSquad("Growth"), false);
+  });
+});
+
+describe("squadsColumn", () => {
+  it("collapses an empty selection to null", () => {
+    assert.equal(squadsColumn([]), null);
+  });
+
+  it("collapses a full selection to null", () => {
+    assert.equal(squadsColumn(SQUADS), null);
+  });
+
+  it("comma-joins a subset in canonical SQUADS order regardless of insertion order", () => {
+    assert.equal(squadsColumn(["Core BE", "SS"]), "SS,Core BE");
+  });
+});
+
+describe("squadsFromColumn", () => {
+  it("resolves null to all squads", () => {
+    assert.deepEqual(squadsFromColumn(null), SQUADS);
+  });
+
+  it("resolves an empty string to all squads", () => {
+    assert.deepEqual(squadsFromColumn(""), SQUADS);
+  });
+
+  it("parses a comma-joined subset", () => {
+    assert.deepEqual(squadsFromColumn("SS,Core FE"), ["SS", "Core FE"]);
+  });
+
+  it("drops an unrecognized token", () => {
+    assert.deepEqual(squadsFromColumn("SS,Growth"), ["SS"]);
   });
 });
 

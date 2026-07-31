@@ -1,27 +1,56 @@
-import type { CfMentionTarget, CfRepo, CfResponse, CfSchedule, CfStatus } from "../domain/cf.js";
+import {
+  squadsColumn,
+  squadsFromColumn,
+  type CfMentionTarget,
+  type CfRepo,
+  type CfResponse,
+  type CfSchedule,
+  type CfStatus,
+  type Squad,
+} from "../domain/cf.js";
 import { stmt, transaction } from "./database.js";
 
+interface CfRepoRow {
+  id: number;
+  name: string;
+  squads: string | null;
+}
+
+function toCfRepo(row: CfRepoRow): CfRepo {
+  return { id: row.id, name: row.name, squads: squadsFromColumn(row.squads) };
+}
+
 export function listRepos(channelId: string): CfRepo[] {
-  return stmt("SELECT id, name FROM cf_repos WHERE channel_id = ? AND active = 1 ORDER BY name").all(
-    channelId,
-  ) as unknown as CfRepo[];
+  const rows = stmt(
+    "SELECT id, name, squads FROM cf_repos WHERE channel_id = ? AND active = 1 ORDER BY position, name",
+  ).all(channelId) as unknown as CfRepoRow[];
+  return rows.map(toCfRepo);
 }
 
 export function getRepoById(id: number): CfRepo | undefined {
-  return stmt("SELECT id, name FROM cf_repos WHERE id = ?").get(id) as unknown as CfRepo | undefined;
+  const row = stmt("SELECT id, name, squads FROM cf_repos WHERE id = ?").get(id) as unknown as
+    | CfRepoRow
+    | undefined;
+  return row ? toCfRepo(row) : undefined;
 }
 
 /** Deactivates this channel's repos first, then reactivates/creates exactly what was submitted. */
-export function replaceRepos(channelId: string, names: readonly string[]): void {
+export function replaceRepos(
+  channelId: string,
+  names: readonly string[],
+  squadsByName: ReadonlyMap<string, readonly Squad[]> = new Map(),
+): void {
   transaction(() => {
     stmt("UPDATE cf_repos SET active = 0 WHERE channel_id = ?").run(channelId);
     const upsert = stmt(
-      `INSERT INTO cf_repos (channel_id, name, active, created_at)
-       VALUES (?, ?, 1, ?)
-       ON CONFLICT (channel_id, name) DO UPDATE SET active = 1`,
+      `INSERT INTO cf_repos (channel_id, name, active, created_at, squads, position)
+       VALUES (?, ?, 1, ?, ?, ?)
+       ON CONFLICT (channel_id, name) DO UPDATE SET active = 1, squads = excluded.squads, position = excluded.position`,
     );
     const createdAt = new Date().toISOString();
-    for (const name of names) upsert.run(channelId, name, createdAt);
+    names.forEach((name, index) => {
+      upsert.run(channelId, name, createdAt, squadsColumn(squadsByName.get(name) ?? []), index);
+    });
   });
 }
 
@@ -96,21 +125,24 @@ export function recordMessage(
   repoId: number,
   channelId: string,
   messageTs: string,
+  squads: readonly Squad[],
 ): void {
   stmt(
-    `INSERT INTO cf_messages (round_id, repo_id, channel_id, message_ts) VALUES (?, ?, ?, ?)`,
-  ).run(roundId, repoId, channelId, messageTs);
+    `INSERT INTO cf_messages (round_id, repo_id, channel_id, message_ts, squads) VALUES (?, ?, ?, ?, ?)`,
+  ).run(roundId, repoId, channelId, messageTs, squadsColumn(squads));
 }
 
 export interface CfMessageRef {
   id: number;
   repoId: number;
+  squads: readonly Squad[];
 }
 
 export function getMessageByTs(messageTs: string): CfMessageRef | undefined {
-  return stmt("SELECT id, repo_id AS repoId FROM cf_messages WHERE message_ts = ?").get(
+  const row = stmt("SELECT id, repo_id AS repoId, squads FROM cf_messages WHERE message_ts = ?").get(
     messageTs,
-  ) as unknown as CfMessageRef | undefined;
+  ) as unknown as { id: number; repoId: number; squads: string | null } | undefined;
+  return row ? { id: row.id, repoId: row.repoId, squads: squadsFromColumn(row.squads) } : undefined;
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { ViewStateValue } from "@slack/bolt";
-import type { View } from "@slack/web-api";
-import type { CfMentionTarget, CfSchedule } from "../domain/cf.js";
+import type { KnownBlock, View } from "@slack/web-api";
+import { SQUADS, isSquad, type CfMentionTarget, type CfRepo, type CfSchedule, type Squad } from "../domain/cf.js";
 import { DAY_NAMES, daysToSelection } from "../domain/days.js";
 import { dayOption } from "./modals.js";
 
@@ -12,7 +12,7 @@ export interface CfSettingsSource {
 }
 
 export interface CfSettingsData {
-  repoNames: readonly string[];
+  repos: readonly CfRepo[];
   schedule?: CfSchedule | undefined;
   mentions: readonly CfMentionTarget[];
 }
@@ -23,6 +23,35 @@ export const MENTION_GROUPS_ACTION_ID = "groups";
 /** A `multi_external_select` option's value is one opaque string — the group id. */
 export function mentionGroupOptionValue(groupId: string): string {
   return groupId;
+}
+
+const REPO_SQUADS_PREFIX = "repoSquads:";
+
+export function repoSquadsBlockId(repoName: string): string {
+  return `${REPO_SQUADS_PREFIX}${repoName}`;
+}
+
+const squadOption = (squad: Squad) => ({
+  text: { type: "plain_text" as const, text: squad },
+  value: squad,
+});
+
+/** Only rendered for a repo already saved — a repo just typed into the Repos
+ *  box has no row here until it's saved once and the form is reopened. */
+function repoSquadsBlock(repo: CfRepo): KnownBlock {
+  return {
+    type: "input",
+    block_id: repoSquadsBlockId(repo.name),
+    optional: true,
+    label: { type: "plain_text", text: `Squads — ${repo.name}` },
+    hint: { type: "plain_text", text: "Unchecked = all squads report on this repo." },
+    element: {
+      type: "checkboxes",
+      action_id: "value",
+      options: SQUADS.map(squadOption),
+      initial_options: repo.squads.map(squadOption),
+    },
+  };
 }
 
 export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource): View {
@@ -49,14 +78,18 @@ export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource):
         type: "input",
         block_id: "repos",
         label: { type: "plain_text", text: "Repos" },
-        hint: { type: "plain_text", text: "One repo per line. Replaces the current list." },
+        hint: {
+          type: "plain_text",
+          text: "One repo per line. Replaces the current list. Save, then reopen this form to set a new repo's squads.",
+        },
         element: {
           type: "plain_text_input",
           action_id: "value",
           multiline: true,
-          initial_value: data.repoNames.join("\n"),
+          initial_value: data.repos.map((repo) => repo.name).join("\n"),
         },
       },
+      ...data.repos.map(repoSquadsBlock),
       {
         type: "input",
         block_id: "mentionUsers",
@@ -123,9 +156,21 @@ export type Values = Record<string, Record<string, ViewStateValue>>;
 
 export interface CfSettingsFields {
   repoNames: string[];
+  repoSquads: ReadonlyMap<string, readonly Squad[]>;
   dayNames: string[];
   at: string;
   mentions: CfMentionTarget[];
+}
+
+function readRepoSquads(values: Values): ReadonlyMap<string, readonly Squad[]> {
+  const map = new Map<string, readonly Squad[]>();
+  for (const [blockId, block] of Object.entries(values)) {
+    if (!blockId.startsWith(REPO_SQUADS_PREFIX)) continue;
+    const repoName = blockId.slice(REPO_SQUADS_PREFIX.length);
+    const selected = (block.value?.selected_options ?? []).map((option) => option.value).filter(isSquad);
+    map.set(repoName, selected);
+  }
+  return map;
 }
 
 export function readCfSettings(values: Values): CfSettingsFields {
@@ -134,6 +179,7 @@ export function readCfSettings(values: Values): CfSettingsFields {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+  const repoSquads = readRepoSquads(values);
   const dayNames = (values.days?.value?.selected_options ?? []).map((option) => option.value);
   const at = (values.at?.value?.value ?? "").trim();
   const mentionUserIds = values.mentionUsers?.value?.selected_users ?? [];
@@ -150,5 +196,5 @@ export function readCfSettings(values: Values): CfSettingsFields {
     })),
   ];
 
-  return { repoNames, dayNames, at, mentions };
+  return { repoNames, repoSquads, dayNames, at, mentions };
 }

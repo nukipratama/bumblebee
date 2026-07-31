@@ -4,7 +4,7 @@ import { cfSettingsBlocks, type CfSettingsSummary } from "../../cf-blocks.js";
 
 export function buildCfSummary(channelId: string): CfSettingsSummary {
   return {
-    repoNames: listRepos(channelId).map((repo) => repo.name),
+    repos: listRepos(channelId),
     schedule: getSchedule(channelId),
     mentions: listMentions(channelId),
   };
