@@ -71,7 +71,7 @@ describe("the host hands over", () => {
     const outcome = applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
-    assert.match(outcome.handover ?? "", /<@U_B> is hosting instead/);
+    assert.match(outcome.announce ?? "", /<@U_B> is hosting instead/);
   });
 
   it("marks the outgoing host as skipping", () => {
@@ -126,7 +126,7 @@ describe("the host hands over", () => {
     const outcome = applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, null);
-    assert.match(outcome.handover ?? "", /nobody is hosting/);
+    assert.match(outcome.announce ?? "", /nobody is hosting/);
   });
 
   it("still marks the clicker skipping and keeps their turn when nobody can take over", () => {
@@ -160,7 +160,7 @@ describe("the host hands over", () => {
       now: MEETING,
     });
 
-    assert.match(outcome.handover ?? "", /<@U_B> is hosting instead/);
+    assert.match(outcome.announce ?? "", /<@U_B> is hosting instead/);
     assert.equal(getSkip(fire.id, "U_A")?.reason, "sick");
   });
 });
@@ -239,7 +239,7 @@ describe("anyone who is not the host", () => {
 
     const outcome = applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
 
-    assert.deepEqual(outcome, {});
+    assert.match(outcome.announce ?? "", /<@U_B> is skipping/);
     assert.deepEqual(skipIds(fire.id), ["U_B"]);
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_A");
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B"]);

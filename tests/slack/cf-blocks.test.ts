@@ -52,12 +52,20 @@ describe("cfRepoBlocks", () => {
       assert.equal(block.elements.length, 2);
       for (const element of block.elements) {
         assert.ok(element.type === "button");
-        assert.equal(element.action_id, CF_STATUS_ACTION);
+        assert.ok(element.action_id?.startsWith(CF_STATUS_ACTION));
         assert.ok(element.confirm);
         const value = JSON.parse(element.value!) as CfButtonValue;
         assert.ok(["all_merged", "no_mr"].includes(value.status));
       }
     }
+  });
+
+  it("gives every status button a unique action_id", () => {
+    const blocks = cfRepoBlocks({ name: "mamikos-web" }, []);
+    const ids = blocks
+      .filter((block) => block.type === "actions")
+      .flatMap((block) => block.elements.map((el) => (el as { action_id: string }).action_id));
+    assert.equal(new Set(ids).size, ids.length);
   });
 });
 
