@@ -1,5 +1,4 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
-import type { CfMentionTarget } from "../../../domain/cf.js";
 import { clearSchedule, replaceMentions, replaceRepos, setSchedule } from "../../../store/cf.js";
 import { CF_EDIT_SETTINGS_ACTION, cfSettingsBlocks, describeCfSettingsChange } from "../../cf-blocks.js";
 import {
@@ -48,37 +47,6 @@ export function registerCfSettingsForm(app: App): void {
       schedule = { at: at.value, days: days.value };
     }
 
-    const mentions: CfMentionTarget[] = fields.mentionUserIds.map((id) => ({
-      kind: "user",
-      id,
-    }));
-
-    if (fields.mentionGroupHandles.length > 0) {
-      try {
-        const { usergroups } = await client.usergroups.list({});
-        const notFound: string[] = [];
-        for (const handle of fields.mentionGroupHandles) {
-          const match = usergroups?.find((group) => group.handle?.toLowerCase() === handle.toLowerCase());
-          if (match?.id && match.handle) mentions.push({ kind: "usergroup", id: match.id, handle: match.handle });
-          else notFound.push(handle);
-        }
-        if (notFound.length > 0) {
-          await ack({
-            response_action: "errors",
-            errors: { mentionGroups: `No user group with handle @${notFound.join(", @")}.` },
-          });
-          return;
-        }
-      } catch (error) {
-        logger.error("looking up the Code Freeze mention groups failed", error);
-        await ack({
-          response_action: "errors",
-          errors: { mentionGroups: "Couldn't look up those groups — check the logs." },
-        });
-        return;
-      }
-    }
-
     await ack();
 
     try {
@@ -87,7 +55,7 @@ export function registerCfSettingsForm(app: App): void {
       replaceRepos(channelId, fields.repoNames);
       if (schedule) setSchedule(channelId, schedule.at, schedule.days);
       else clearSchedule(channelId);
-      replaceMentions(channelId, mentions);
+      replaceMentions(channelId, fields.mentions);
 
       const after = buildCfSummary(channelId);
       const change = describeCfSettingsChange(body.user.id, before, after);
