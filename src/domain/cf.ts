@@ -55,8 +55,8 @@ export function statusEmoji(status: CfStatus): string {
   return status === "all_merged" ? "✅" : "❌";
 }
 
-/** One line per squad: current status if reported, or a waiting placeholder. */
+/** One bulleted line per squad: current status if reported, or a waiting placeholder. */
 export function squadStatusLine(squad: Squad, response: CfResponse | undefined): string {
-  if (!response) return `*${squad}* — _not yet reported_`;
-  return `*${squad}* — ${statusEmoji(response.status)} ${statusLabel(response.status)} (<@${response.respondedBy}>)`;
+  if (!response) return `• *${squad}* — _not yet reported_`;
+  return `• *${squad}* — ${statusEmoji(response.status)} ${statusLabel(response.status)} (<@${response.respondedBy}>)`;
 }

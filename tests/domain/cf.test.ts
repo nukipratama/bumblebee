@@ -24,17 +24,17 @@ describe("statusLabel / statusEmoji", () => {
 });
 
 describe("squadStatusLine", () => {
-  it("shows a waiting placeholder when nobody has reported", () => {
-    assert.equal(squadStatusLine("LIMO", undefined), "*LIMO* — _not yet reported_");
+  it("shows a bulleted waiting placeholder when nobody has reported", () => {
+    assert.equal(squadStatusLine("LIMO", undefined), "• *LIMO* — _not yet reported_");
   });
 
-  it("shows the status and who reported it", () => {
+  it("shows a bulleted line with the status and who reported it", () => {
     const line = squadStatusLine("LIMO", {
       squad: "LIMO",
       status: "no_mr",
       respondedBy: "U123",
     });
-    assert.equal(line, "*LIMO* — ❌ No MR (<@U123>)");
+    assert.equal(line, "• *LIMO* — ❌ No MR (<@U123>)");
   });
 });
 
