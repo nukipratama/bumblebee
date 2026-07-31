@@ -2,7 +2,12 @@ import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { statusLabel, type CfStatus, type Squad } from "../../../domain/cf.js";
 import { getMessageByTs, getRepoById, getResponses, upsertResponse } from "../../../store/cf.js";
-import { CF_STATUS_ACTION, cfFallbackText, cfRepoBlocks, type CfButtonValue } from "../../cf-blocks.js";
+import {
+  CF_STATUS_ACTION_PATTERN,
+  cfFallbackText,
+  cfRepoBlocks,
+  type CfButtonValue,
+} from "../../cf-blocks.js";
 
 const MESSAGE_GONE =
   "I can't find the Code Freeze round this belongs to — it may be from an older round.";
@@ -26,7 +31,7 @@ async function repost(
 }
 
 export function registerCfStatus(app: App): void {
-  app.action<BlockAction<ButtonAction>>(CF_STATUS_ACTION, async ({ ack, body, client, logger }) => {
+  app.action<BlockAction<ButtonAction>>(CF_STATUS_ACTION_PATTERN, async ({ ack, body, client, logger }) => {
     await ack();
 
     const messageTs = body.message?.ts;

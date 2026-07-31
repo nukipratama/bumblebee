@@ -12,8 +12,14 @@ import { escapeMrkdwn } from "./blocks.js";
 import { formatDays } from "./text.js";
 
 export const CF_STATUS_ACTION = "cf_status_set";
+export const CF_STATUS_ACTION_PATTERN = new RegExp(`^${CF_STATUS_ACTION}_`);
 export const CF_EDIT_SETTINGS_ACTION = "cf_edit_settings";
 export const CF_START_ACTION = "cf_start";
+
+/** Slack requires a unique `action_id` per interactive element in a message. */
+function statusActionId(squad: Squad, status: CfStatus): string {
+  return `${CF_STATUS_ACTION}_${squad.toLowerCase().replace(/\s+/g, "_")}_${status}`;
+}
 
 /** A button's `value`. The message/channel it belongs to comes from the click event itself. */
 export interface CfButtonValue {
@@ -35,7 +41,7 @@ function squadBlocks(squad: Squad, responses: readonly CfResponse[]): KnownBlock
       type: "actions",
       elements: STATUSES.map((status) => ({
         type: "button" as const,
-        action_id: CF_STATUS_ACTION,
+        action_id: statusActionId(squad, status),
         text: { type: "plain_text" as const, text: statusLabel(status) },
         value: JSON.stringify({ squad, status } satisfies CfButtonValue),
         confirm: {
