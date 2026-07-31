@@ -16,6 +16,7 @@ export const CF_STATUS_ACTION = "cf_status_set";
 export const CF_STATUS_ACTION_PATTERN = new RegExp(`^${CF_STATUS_ACTION}_`);
 export const CF_EDIT_SETTINGS_ACTION = "cf_edit_settings";
 export const CF_START_ACTION = "cf_start";
+export const CF_REPO_REMOVE_ACTION = "cf_repo_remove";
 
 /** Slack requires a unique `action_id` per interactive element in a message. */
 function statusActionId(squad: Squad, status: CfStatus): string {
@@ -102,15 +103,38 @@ function scheduleLine(summary: CfSettingsSummary): string {
   return `Recurring: every ${formatDays(days)} at ${at} (Asia/Jakarta), posts to <#${channelId}>${lastRun}`;
 }
 
+/** A `section`'s accessory holds one element — enough for a single Remove button. */
+function repoRowBlocks(name: string): KnownBlock {
+  return {
+    type: "section",
+    text: { type: "mrkdwn", text: `\`${escapeMrkdwn(name)}\`` },
+    accessory: {
+      type: "button",
+      action_id: CF_REPO_REMOVE_ACTION,
+      style: "danger",
+      text: { type: "plain_text", text: "Remove" },
+      value: name,
+      confirm: {
+        title: { type: "plain_text", text: "Remove repo" },
+        text: {
+          type: "mrkdwn",
+          text: `Stop tracking \`${escapeMrkdwn(name)}\` in Code Freeze reports?`,
+        },
+        confirm: { type: "plain_text", text: "Remove" },
+        deny: { type: "plain_text", text: "Cancel" },
+      },
+    },
+  };
+}
+
 export function cfSettingsBlocks(summary: CfSettingsSummary): KnownBlock[] {
-  const repoLine =
-    summary.repoNames.length > 0
-      ? summary.repoNames.map(escapeMrkdwn).join(", ")
-      : "none configured";
+  const repoHeading =
+    summary.repoNames.length > 0 ? "*Repos*" : "Repos: none configured";
 
   return [
     { type: "section", text: { type: "mrkdwn", text: "*Code Freeze Report Configuration*" } },
-    { type: "section", text: { type: "mrkdwn", text: `Repos: ${repoLine}` } },
+    { type: "section", text: { type: "mrkdwn", text: repoHeading } },
+    ...summary.repoNames.map(repoRowBlocks),
     { type: "section", text: { type: "mrkdwn", text: mentionLine(summary) } },
     { type: "section", text: { type: "mrkdwn", text: scheduleLine(summary) } },
     {
