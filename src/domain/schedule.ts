@@ -98,3 +98,17 @@ export function nextFire(
   }
   return null;
 }
+
+/** A Code Freeze schedule has no cadence multiplier and no holiday check — see runCfTick. */
+export function nextCfFire(schedule: Pick<Reminder, "at" | "days">, from: Date): Date | null {
+  for (let dayOffset = 0; dayOffset <= DAYS_PER_WEEK; dayOffset++) {
+    const candidate = atTimeOnDay(from, dayOffset, schedule.at);
+    if (candidate <= from) continue;
+
+    const { day } = localParts(candidate);
+    if (!dayMatches(schedule.days, day)) continue;
+
+    return candidate;
+  }
+  return null;
+}

@@ -26,7 +26,7 @@ no redeploy.
 | **Heads-up** | The **Heads-up** field on the reminder form | Posts an early notice N minutes before, naming the host then — so a handover can happen before the meeting starts. |
 | **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason, shown on the post. The host hands over to the next person; anyone else is just listed as skipping. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
-| **Status** | `/bee-status` | Uptime line, this channel's reminder count, next fire and last scheduler tick. |
+| **Status** | `/bee-status` | Uptime line, this channel's reminder count, next fire and last scheduler tick, plus its Code Freeze repo count, recurring schedule, next fire and last run. |
 | **Code Freeze reports** | `/bee-cf-report` | Posts one message per configured repo with a button per squad (`All Merged` / `No MR`). Each post updates live as squads click, with a thread reply saying who clicked what. |
 
 Times are 24-hour, **Asia/Jakarta**. Reminder state lives in SQLite and survives restarts.
@@ -91,7 +91,25 @@ At [api.slack.com/apps](https://api.slack.com/apps):
 <details>
 <summary>App display settings (optional, for flavor)</summary>
 
-- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack for the LIMO team. 🐝🤖`
+- **Short description:** `Optimus's loyal Autobot scout, reporting for duty in Slack. 🐝🤖`
+- **Long description:**
+
+  ```
+  Bumblebee started as the LIMO team's Slack bot — successor to Optimus — but works in any channel it's invited to.
+
+  Mention @Bumblebee anywhere he's been invited and he replies right there. Ask inside a thread and he reads the thread first, so follow-ups make sense.
+
+  Reminders post on a schedule you set: a time to the minute, the days you pick, every week, fortnight, or three. Build one with /bee-remind list → + New reminder. Or write the message in the channel exactly as you want it, then ⋮ More actions → Make this a reminder to reuse it byte-identical, mentions and all.
+
+  Give a reminder a roster and every post rotates to a different host, shuffled, until everyone's had a turn. Can't make it? Skip me hands the turn to the next person and keeps yours for the next lap.
+
+  Add a public holiday once via /bee-remind holiday and it skips reminders in every channel, for everyone.
+
+  /bee-cf-report tracks code freeze per channel: pick the repos and squads that report into it, who gets @mentioned, and a recurring schedule. When it fires, each squad marks itself All Merged or No MR right on the post, live for everyone to see.
+
+  Commands: /bee-status, /bee-remind (list, show, holiday, help), /bee-cf-report. Everything that changes something is a button, a picker, or a form.
+  ```
+
 - **Background color:** `#111111`
 
 </details>
@@ -423,8 +441,9 @@ docker compose logs -f
 
 State lives in SQLite (Node's built-in `node:sqlite`) at `DB_PATH`. It holds reminders, holidays,
 rosters, one row per reminder fired, who skipped each occurrence, and the Code Freeze repo list,
-schedule, rounds and per-squad responses — all surfaced through `/bee-status`, `/bee-remind show`
-and `/bee-cf-report`.
+schedule, rounds and per-squad responses — reminder state surfaces through `/bee-status` and
+`/bee-remind show`; the Code Freeze repo count and schedule also surface in `/bee-status`, but
+rounds and per-squad responses are only in `/bee-cf-report`.
 
 In production the file sits in the `bumblebee-data` **Docker named volume**, so it survives deploys.
 A named volume is deliberate: Docker seeds it from the image's `node`-owned `/app/data`, so the

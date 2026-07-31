@@ -6,6 +6,7 @@ import {
   leadTime,
   matches,
   matchesLead,
+  nextCfFire,
   nextFire,
 } from "../../src/domain/schedule.js";
 import type { Reminder } from "../../src/domain/types.js";
@@ -112,6 +113,25 @@ describe("nextFire", () => {
 
   it("returns null when nothing survives the search window", () => {
     assert.equal(nextFire(reminder(), new Date(MONDAY), always), null);
+  });
+});
+
+describe("nextCfFire", () => {
+  const schedule = { at: "09:00", days: "monday,wednesday,friday" };
+
+  it("returns today when the time is still ahead", () => {
+    const next = nextCfFire(schedule, new Date("2026-07-27T08:00:00"));
+    assert.deepEqual(next, new Date(MONDAY));
+  });
+
+  it("skips to the next listed day once today's time has passed", () => {
+    const next = nextCfFire(schedule, new Date("2026-07-27T09:30:00"));
+    assert.deepEqual(next, new Date("2026-07-29T09:00:00"));
+  });
+
+  it("does not check holidays or cadence", () => {
+    const next = nextCfFire({ at: "09:00", days: "monday" }, new Date("2026-07-27T09:30:00"));
+    assert.deepEqual(next, new Date("2026-08-03T09:00:00"));
   });
 });
 
