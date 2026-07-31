@@ -22,9 +22,13 @@ export interface CfResponse {
   respondedBy: string;
 }
 
-export interface CfMentionGroup {
+export type CfMentionKind = "user" | "usergroup";
+
+/** `handle` is only ever set for a usergroup — a user mention needs no lookup. */
+export interface CfMentionTarget {
+  kind: CfMentionKind;
   id: string;
-  handle: string;
+  handle?: string;
 }
 
 export function statusLabel(status: CfStatus): string {

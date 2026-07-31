@@ -68,10 +68,13 @@ describe("cfRepoBlocks", () => {
     assert.equal(new Set(ids).size, ids.length);
   });
 
-  it("prepends the mention group when one is configured", () => {
-    const [header] = cfRepoBlocks({ name: "mamikos-web" }, [], { id: "S123", handle: "esls" });
+  it("prepends every configured mention, users and groups mixed", () => {
+    const [header] = cfRepoBlocks({ name: "mamikos-web" }, [], [
+      { kind: "user", id: "U1" },
+      { kind: "usergroup", id: "S123", handle: "esls" },
+    ]);
     assert.ok(header && header.type === "section");
-    assert.match((header.text as { text: string }).text, /^<!subteam\^S123> \*Code Freeze Status\*/);
+    assert.match((header.text as { text: string }).text, /^<@U1> <!subteam\^S123> \*Code Freeze Status\*/);
   });
 
   it("has no mention prefix when none is configured", () => {
@@ -83,19 +86,19 @@ describe("cfRepoBlocks", () => {
 
 describe("cfSettingsBlocks", () => {
   it("shows 'none configured' when there are no repos", () => {
-    const [, repoLine] = cfSettingsBlocks({ repoNames: [] });
+    const [, repoLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
     assert.ok(repoLine && repoLine.type === "section");
     assert.match((repoLine.text as { text: string }).text, /none configured/);
   });
 
   it("lists configured repos", () => {
-    const [, repoLine] = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"] });
+    const [, repoLine] = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
     assert.ok(repoLine && repoLine.type === "section");
     assert.match((repoLine.text as { text: string }).text, /mamikos-web, pms/);
   });
 
   it("shows 'not configured' when there is no recurring schedule", () => {
-    const [, , , scheduleLine] = cfSettingsBlocks({ repoNames: [] });
+    const [, , , scheduleLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
     assert.ok(scheduleLine && scheduleLine.type === "section");
     assert.match((scheduleLine.text as { text: string }).text, /not configured/);
   });
@@ -103,6 +106,7 @@ describe("cfSettingsBlocks", () => {
   it("describes the recurring schedule when set", () => {
     const [, , , scheduleLine] = cfSettingsBlocks({
       repoNames: [],
+      mentions: [],
       schedule: { channelId: "C1", at: "09:00", days: "monday,tuesday", lastFiredDate: "2026-07-29" },
     });
     assert.ok(scheduleLine && scheduleLine.type === "section");
@@ -112,23 +116,28 @@ describe("cfSettingsBlocks", () => {
     assert.match(text, /last run 2026-07-29/);
   });
 
-  it("shows 'not configured' when there is no mention group", () => {
-    const [, , mentionLine] = cfSettingsBlocks({ repoNames: [] });
+  it("shows 'not configured' when there are no mentions", () => {
+    const [, , mentionLine] = cfSettingsBlocks({ repoNames: [], mentions: [] });
     assert.ok(mentionLine && mentionLine.type === "section");
     assert.match((mentionLine.text as { text: string }).text, /not configured/);
   });
 
-  it("shows the mention group handle when set", () => {
+  it("shows every configured mention, users and groups mixed", () => {
     const [, , mentionLine] = cfSettingsBlocks({
       repoNames: [],
-      mentionGroup: { id: "S123", handle: "esls" },
+      mentions: [
+        { kind: "user", id: "U1" },
+        { kind: "usergroup", id: "S123", handle: "esls" },
+      ],
     });
     assert.ok(mentionLine && mentionLine.type === "section");
-    assert.match((mentionLine.text as { text: string }).text, /@esls/);
+    const text = (mentionLine.text as { text: string }).text;
+    assert.match(text, /<@U1>/);
+    assert.match(text, /<!subteam\^S123>/);
   });
 
   it("includes Edit settings and Start now buttons, with Start now requiring confirmation", () => {
-    const blocks = cfSettingsBlocks({ repoNames: [] });
+    const blocks = cfSettingsBlocks({ repoNames: [], mentions: [] });
     const actions = blocks.at(-1);
     assert.ok(actions && actions.type === "actions");
     assert.equal(actions.elements.length, 2);

@@ -3,14 +3,14 @@ import {
   SQUADS,
   squadStatusLine,
   statusLabel,
-  type CfMentionGroup,
+  type CfMentionTarget,
   type CfResponse,
   type CfSchedule,
   type CfStatus,
   type Squad,
 } from "../domain/cf.js";
 import { escapeMrkdwn } from "./blocks.js";
-import { formatDays } from "./text.js";
+import { formatDays, mention } from "./text.js";
 
 export const CF_STATUS_ACTION = "cf_status_set";
 export const CF_STATUS_ACTION_PATTERN = new RegExp(`^${CF_STATUS_ACTION}_`);
@@ -56,18 +56,22 @@ function squadBlocks(squad: Squad, responses: readonly CfResponse[]): KnownBlock
   ];
 }
 
+function mentionText(target: CfMentionTarget): string {
+  return target.kind === "user" ? mention(target.id) : `<!subteam^${target.id}>`;
+}
+
 export function cfRepoBlocks(
   repo: { name: string },
   responses: readonly CfResponse[],
-  mentionGroup?: CfMentionGroup,
+  mentions: readonly CfMentionTarget[] = [],
 ): KnownBlock[] {
-  const mention = mentionGroup ? `<!subteam^${mentionGroup.id}> ` : "";
+  const prefix = mentions.length > 0 ? `${mentions.map(mentionText).join(" ")} ` : "";
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `${mention}*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
+        text: `${prefix}*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
       },
     },
     ...SQUADS.flatMap((squad) => squadBlocks(squad, responses)),
@@ -81,12 +85,12 @@ export function cfFallbackText(repo: { name: string }): string {
 export interface CfSettingsSummary {
   repoNames: readonly string[];
   schedule?: CfSchedule | undefined;
-  mentionGroup?: CfMentionGroup | undefined;
+  mentions: readonly CfMentionTarget[];
 }
 
 function mentionLine(summary: CfSettingsSummary): string {
-  return summary.mentionGroup
-    ? `Mentions: @${summary.mentionGroup.handle}`
+  return summary.mentions.length > 0
+    ? `Mentions: ${summary.mentions.map(mentionText).join(" ")}`
     : "Mentions: not configured";
 }
 

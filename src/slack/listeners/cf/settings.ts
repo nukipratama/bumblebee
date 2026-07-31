@@ -1,12 +1,12 @@
 import type { App } from "@slack/bolt";
-import { getMentionGroup, getSchedule, listRepos } from "../../../store/cf.js";
+import { getSchedule, listMentions, listRepos } from "../../../store/cf.js";
 import { cfSettingsBlocks, type CfSettingsSummary } from "../../cf-blocks.js";
 
 export function buildCfSummary(): CfSettingsSummary {
   return {
     repoNames: listRepos().map((repo) => repo.name),
     schedule: getSchedule(),
-    mentionGroup: getMentionGroup(),
+    mentions: listMentions(),
   };
 }
 

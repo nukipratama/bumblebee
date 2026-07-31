@@ -137,6 +137,20 @@ const migrations: string[] = [
      mention_group_id     TEXT,
      mention_group_handle TEXT
    )`,
+  // Superseded by cf_mentions below — a single group wasn't enough, and this
+  // table shipped with no way to configure it yet (missing scope), so it never
+  // held real data.
+  `DROP TABLE cf_settings`,
+  // One row per mention target, mixing individual users and groups. No `active`
+  // flag: unlike cf_repos, nothing else references a mention by id, so a replace
+  // is a plain delete-and-reinsert.
+  `CREATE TABLE cf_mentions (
+     id        INTEGER PRIMARY KEY AUTOINCREMENT,
+     kind      TEXT NOT NULL CHECK (kind IN ('user', 'usergroup')),
+     target_id TEXT NOT NULL,
+     handle    TEXT,
+     UNIQUE (kind, target_id)
+   )`,
 ];
 
 export function initDb(): void {
