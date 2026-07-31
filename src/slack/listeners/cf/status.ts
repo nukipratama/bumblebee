@@ -1,7 +1,13 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { statusLabel, type CfStatus, type Squad } from "../../../domain/cf.js";
-import { getMessageByTs, getRepoById, getResponses, upsertResponse } from "../../../store/cf.js";
+import {
+  getMentionGroup,
+  getMessageByTs,
+  getRepoById,
+  getResponses,
+  upsertResponse,
+} from "../../../store/cf.js";
 import {
   CF_STATUS_ACTION_PATTERN,
   cfFallbackText,
@@ -21,11 +27,12 @@ async function repost(
 ): Promise<void> {
   const repo = getRepoById(repoId) ?? { name: "unknown repo" };
   const responses = getResponses(messageId);
+  const mentionGroup = getMentionGroup();
 
   await client.chat.update({
     channel: channelId,
     ts: messageTs,
-    blocks: cfRepoBlocks(repo, responses),
+    blocks: cfRepoBlocks(repo, responses, mentionGroup),
     text: cfFallbackText(repo),
   });
 }

@@ -3,6 +3,7 @@ import {
   SQUADS,
   squadStatusLine,
   statusLabel,
+  type CfMentionGroup,
   type CfResponse,
   type CfSchedule,
   type CfStatus,
@@ -55,13 +56,18 @@ function squadBlocks(squad: Squad, responses: readonly CfResponse[]): KnownBlock
   ];
 }
 
-export function cfRepoBlocks(repo: { name: string }, responses: readonly CfResponse[]): KnownBlock[] {
+export function cfRepoBlocks(
+  repo: { name: string },
+  responses: readonly CfResponse[],
+  mentionGroup?: CfMentionGroup,
+): KnownBlock[] {
+  const mention = mentionGroup ? `<!subteam^${mentionGroup.id}> ` : "";
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
+        text: `${mention}*Code Freeze Status* — \`${escapeMrkdwn(repo.name)}\`\nPlease report status of your Code Freeze (MR to develop) below.`,
       },
     },
     ...SQUADS.flatMap((squad) => squadBlocks(squad, responses)),
@@ -75,6 +81,13 @@ export function cfFallbackText(repo: { name: string }): string {
 export interface CfSettingsSummary {
   repoNames: readonly string[];
   schedule?: CfSchedule | undefined;
+  mentionGroup?: CfMentionGroup | undefined;
+}
+
+function mentionLine(summary: CfSettingsSummary): string {
+  return summary.mentionGroup
+    ? `Mentions: @${summary.mentionGroup.handle}`
+    : "Mentions: not configured";
 }
 
 function scheduleLine(summary: CfSettingsSummary): string {
@@ -94,6 +107,7 @@ export function cfSettingsBlocks(summary: CfSettingsSummary): KnownBlock[] {
   return [
     { type: "section", text: { type: "mrkdwn", text: "*Code Freeze Report Configuration*" } },
     { type: "section", text: { type: "mrkdwn", text: `Repos: ${repoLine}` } },
+    { type: "section", text: { type: "mrkdwn", text: mentionLine(summary) } },
     { type: "section", text: { type: "mrkdwn", text: scheduleLine(summary) } },
     {
       type: "actions",

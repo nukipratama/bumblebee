@@ -22,6 +22,11 @@ export interface CfResponse {
   respondedBy: string;
 }
 
+export interface CfMentionGroup {
+  id: string;
+  handle: string;
+}
+
 export function statusLabel(status: CfStatus): string {
   return status === "all_merged" ? "All Merged" : "No MR";
 }

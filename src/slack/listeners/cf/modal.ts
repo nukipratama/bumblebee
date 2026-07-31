@@ -1,5 +1,12 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
-import { clearSchedule, replaceRepos, setSchedule } from "../../../store/cf.js";
+import type { CfMentionGroup } from "../../../domain/cf.js";
+import {
+  clearMentionGroup,
+  clearSchedule,
+  replaceRepos,
+  setMentionGroup,
+  setSchedule,
+} from "../../../store/cf.js";
 import { CF_EDIT_SETTINGS_ACTION, cfSettingsBlocks } from "../../cf-blocks.js";
 import {
   CF_SETTINGS_FORM,
@@ -47,12 +54,39 @@ export function registerCfSettingsForm(app: App): void {
       schedule = { at: at.value, days: days.value };
     }
 
+    let mentionGroup: CfMentionGroup | undefined;
+    if (fields.mentionGroupHandle) {
+      try {
+        const { usergroups } = await client.usergroups.list({});
+        const match = usergroups?.find(
+          (group) => group.handle?.toLowerCase() === fields.mentionGroupHandle.toLowerCase(),
+        );
+        if (!match?.id || !match.handle) {
+          await ack({
+            response_action: "errors",
+            errors: { mentionGroup: `No user group with handle @${fields.mentionGroupHandle}.` },
+          });
+          return;
+        }
+        mentionGroup = { id: match.id, handle: match.handle };
+      } catch (error) {
+        logger.error("looking up the Code Freeze mention group failed", error);
+        await ack({
+          response_action: "errors",
+          errors: { mentionGroup: "Couldn't look up that group — check the logs." },
+        });
+        return;
+      }
+    }
+
     await ack();
 
     try {
       replaceRepos(fields.repoNames);
       if (schedule) setSchedule(channelId, schedule.at, schedule.days);
       else clearSchedule();
+      if (mentionGroup) setMentionGroup(mentionGroup.id, mentionGroup.handle);
+      else clearMentionGroup();
 
       await client.chat.postMessage({
         channel: channelId,

@@ -1,6 +1,6 @@
 import type { ViewStateValue } from "@slack/bolt";
 import type { View } from "@slack/web-api";
-import type { CfSchedule } from "../domain/cf.js";
+import type { CfMentionGroup, CfSchedule } from "../domain/cf.js";
 import { DAY_NAMES, daysToSelection } from "../domain/days.js";
 import { dayOption } from "./modals.js";
 
@@ -14,6 +14,7 @@ export interface CfSettingsSource {
 export interface CfSettingsData {
   repoNames: readonly string[];
   schedule?: CfSchedule | undefined;
+  mentionGroup?: CfMentionGroup | undefined;
 }
 
 export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource): View {
@@ -37,6 +38,22 @@ export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource):
           action_id: "value",
           multiline: true,
           initial_value: data.repoNames.join("\n"),
+        },
+      },
+      {
+        type: "input",
+        block_id: "mentionGroup",
+        optional: true,
+        label: { type: "plain_text", text: "Mention group" },
+        hint: {
+          type: "plain_text",
+          text: "A user group handle to @-mention on every post, e.g. esls. Leave empty for none.",
+        },
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          placeholder: { type: "plain_text", text: "esls" },
+          ...(data.mentionGroup ? { initial_value: data.mentionGroup.handle } : {}),
         },
       },
       {
@@ -81,6 +98,7 @@ export interface CfSettingsFields {
   repoNames: string[];
   dayNames: string[];
   at: string;
+  mentionGroupHandle: string;
 }
 
 export function readCfSettings(values: Values): CfSettingsFields {
@@ -91,6 +109,7 @@ export function readCfSettings(values: Values): CfSettingsFields {
     .filter(Boolean);
   const dayNames = (values.days?.value?.selected_options ?? []).map((option) => option.value);
   const at = (values.at?.value?.value ?? "").trim();
+  const mentionGroupHandle = (values.mentionGroup?.value?.value ?? "").trim().replace(/^@/, "");
 
-  return { repoNames, dayNames, at };
+  return { repoNames, dayNames, at, mentionGroupHandle };
 }

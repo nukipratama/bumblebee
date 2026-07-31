@@ -1,6 +1,6 @@
 import type { WebClient } from "@slack/web-api";
 import { cfFallbackText, cfRepoBlocks } from "../slack/cf-blocks.js";
-import { listRepos, recordMessage, startRound } from "../store/cf.js";
+import { getMentionGroup, listRepos, recordMessage, startRound } from "../store/cf.js";
 
 export interface StartCfRoundResult {
   repoCount: number;
@@ -17,11 +17,12 @@ export async function startCfRound(
 ): Promise<StartCfRoundResult> {
   const repos = listRepos();
   const roundId = startRound(startedBy);
+  const mentionGroup = getMentionGroup();
 
   for (const repo of repos) {
     const posted = await client.chat.postMessage({
       channel: channelId,
-      blocks: cfRepoBlocks(repo, []),
+      blocks: cfRepoBlocks(repo, [], mentionGroup),
       text: cfFallbackText(repo),
       unfurl_links: false,
       unfurl_media: false,

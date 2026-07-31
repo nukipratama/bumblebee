@@ -129,6 +129,14 @@ const migrations: string[] = [
    )`,
   // AI replies are gone, so there is no usage left to record.
   `DROP TABLE ai_usage`,
+  // The group to @-mention on every Code Freeze Status post. A separate singleton
+  // rather than a cf_schedule column, so clearing the recurring schedule doesn't
+  // also wipe this — the two are independent settings.
+  `CREATE TABLE cf_settings (
+     id                   INTEGER PRIMARY KEY CHECK (id = 1),
+     mention_group_id     TEXT,
+     mention_group_handle TEXT
+   )`,
 ];
 
 export function initDb(): void {

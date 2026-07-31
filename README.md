@@ -67,6 +67,7 @@ At [api.slack.com/apps](https://api.slack.com/apps):
    | `commands` | the slash commands |
    | `channels:history` | reading the source message for "Make this a reminder", in public channels |
    | `groups:history` | the same, in private channels |
+   | `usergroups:read` | resolving a Code Freeze mention group by handle |
 
    Adding scopes later requires **Reinstall to Workspace**.
 4. **Slash Commands** → create `/bee-status`, `/bee-remind` and `/bee-cf-report`. Socket Mode needs
