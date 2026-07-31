@@ -139,7 +139,8 @@ export function readCfSettings(values: Values): CfSettingsFields {
   const mentionUserIds = values.mentionUsers?.value?.selected_users ?? [];
   // The picker only ever offers real groups, so the selection is already fully
   // resolved — no server-side lookup needed, unlike the old typed-handle field.
-  const mentionGroupSelections = values[MENTION_GROUPS_BLOCK_ID]?.value?.selected_options ?? [];
+  const mentionGroupSelections =
+    values[MENTION_GROUPS_BLOCK_ID]?.[MENTION_GROUPS_ACTION_ID]?.selected_options ?? [];
   const mentions: CfMentionTarget[] = [
     ...mentionUserIds.map((id) => ({ kind: "user" as const, id })),
     ...mentionGroupSelections.map((option) => ({
