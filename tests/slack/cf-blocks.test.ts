@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  CF_REPO_REMOVE_ACTION,
+  CF_REMOVE_CONFIG_ACTION,
   CF_STATUS_ACTION,
   cfRepoBlocks,
   cfSettingsBlocks,
+  describeCfSettingsChange,
   type CfButtonValue,
+  type CfSettingsSummary,
 } from "../../src/slack/cf-blocks.js";
 import type { CfResponse } from "../../src/domain/cf.js";
 
@@ -92,23 +94,10 @@ describe("cfSettingsBlocks", () => {
     assert.match((repoLine.text as { text: string }).text, /none configured/);
   });
 
-  it("gives each configured repo its own row with a Remove button", () => {
-    const blocks = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
-    const repoRows = blocks.filter(
-      (block) => block.type === "section" && "accessory" in block && block.accessory,
-    );
-    assert.equal(repoRows.length, 2);
-
-    const names = repoRows.map((row) => (row as { text: { text: string } }).text.text);
-    assert.deepEqual(names, ["`mamikos-web`", "`pms`"]);
-
-    for (const row of repoRows) {
-      const accessory = (row as { accessory: { action_id: string; value: string; confirm: unknown } })
-        .accessory;
-      assert.equal(accessory.action_id, CF_REPO_REMOVE_ACTION);
-      assert.ok(names.includes(`\`${accessory.value}\``));
-      assert.ok(accessory.confirm);
-    }
+  it("lists configured repos", () => {
+    const [, repoLine] = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
+    assert.ok(repoLine && repoLine.type === "section");
+    assert.match((repoLine.text as { text: string }).text, /mamikos-web, pms/);
   });
 
   it("shows 'not configured' when there is no recurring schedule", () => {
@@ -150,13 +139,61 @@ describe("cfSettingsBlocks", () => {
     assert.match(text, /<!subteam\^S123>/);
   });
 
-  it("includes Edit settings and Start now buttons, with Start now requiring confirmation", () => {
+  it("includes Edit settings, Start now, and Remove config buttons, all requiring confirmation except Edit", () => {
     const blocks = cfSettingsBlocks({ repoNames: [], mentions: [] });
     const actions = blocks.at(-1);
     assert.ok(actions && actions.type === "actions");
-    assert.equal(actions.elements.length, 2);
-    const [edit, start] = actions.elements;
-    assert.ok(edit?.type === "button" && start?.type === "button");
+    assert.equal(actions.elements.length, 3);
+    const [edit, start, removeConfig] = actions.elements;
+    assert.ok(edit?.type === "button" && start?.type === "button" && removeConfig?.type === "button");
     assert.ok(start.confirm);
+    assert.equal(removeConfig.action_id, CF_REMOVE_CONFIG_ACTION);
+    assert.equal(removeConfig.style, "danger");
+    assert.ok(removeConfig.confirm);
+  });
+});
+
+describe("describeCfSettingsChange", () => {
+  const empty: CfSettingsSummary = { repoNames: [], mentions: [] };
+
+  it("reports an added repo", () => {
+    const before: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms"] };
+    const after: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms", "pms-ss"] };
+    const change = describeCfSettingsChange("U1", before, after);
+    assert.match(change ?? "", /<@U1> updated the Code Freeze Report configuration/);
+    assert.match(change ?? "", /added repo `pms-ss`/);
+  });
+
+  it("reports cleared mentions", () => {
+    const before: CfSettingsSummary = { ...empty, mentions: [{ kind: "user", id: "U2" }] };
+    const after: CfSettingsSummary = { ...empty, mentions: [] };
+    assert.match(describeCfSettingsChange("U1", before, after) ?? "", /cleared mentions/);
+  });
+
+  it("reports a changed schedule time", () => {
+    const before: CfSettingsSummary = {
+      ...empty,
+      schedule: { channelId: "C1", at: "09:00", days: "monday", lastFiredDate: null },
+    };
+    const after: CfSettingsSummary = {
+      ...empty,
+      schedule: { channelId: "C1", at: "10:30", days: "monday", lastFiredDate: null },
+    };
+    assert.match(
+      describeCfSettingsChange("U1", before, after) ?? "",
+      /changed the recurring schedule to every monday at 10:30/,
+    );
+  });
+
+  it("reports multiple removed repos on a full clear", () => {
+    const before: CfSettingsSummary = { ...empty, repoNames: ["mamikos-web", "pms"] };
+    assert.match(
+      describeCfSettingsChange("U1", before, empty) ?? "",
+      /removed repos `mamikos-web`, `pms`/,
+    );
+  });
+
+  it("returns undefined for a no-op save", () => {
+    assert.equal(describeCfSettingsChange("U1", empty, empty), undefined);
   });
 });

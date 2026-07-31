@@ -2,19 +2,19 @@ import type { App } from "@slack/bolt";
 import { getSchedule, listMentions, listRepos } from "../../../store/cf.js";
 import { cfSettingsBlocks, type CfSettingsSummary } from "../../cf-blocks.js";
 
-export function buildCfSummary(): CfSettingsSummary {
+export function buildCfSummary(channelId: string): CfSettingsSummary {
   return {
-    repoNames: listRepos().map((repo) => repo.name),
-    schedule: getSchedule(),
-    mentions: listMentions(),
+    repoNames: listRepos(channelId).map((repo) => repo.name),
+    schedule: getSchedule(channelId),
+    mentions: listMentions(channelId),
   };
 }
 
 export function registerCfSettings(app: App): void {
-  app.command("/bee-cf-report", async ({ ack, respond, logger }) => {
+  app.command("/bee-cf-report", async ({ ack, command, respond, logger }) => {
     await ack();
     try {
-      const summary = buildCfSummary();
+      const summary = buildCfSummary(command.channel_id);
       await respond({ text: "Code Freeze Report Configuration", blocks: cfSettingsBlocks(summary) });
     } catch (error) {
       logger.error("/bee-cf-report failed", error);

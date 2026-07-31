@@ -21,7 +21,7 @@ async function repost(
 ): Promise<void> {
   const repo = getRepoById(repoId) ?? { name: "unknown repo" };
   const responses = getResponses(messageId);
-  const mentions = listMentions();
+  const mentions = listMentions(channelId);
 
   await client.chat.update({
     channel: channelId,

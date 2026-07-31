@@ -15,9 +15,9 @@ export async function startCfRound(
   startedBy: string,
   channelId: string,
 ): Promise<StartCfRoundResult> {
-  const repos = listRepos();
+  const repos = listRepos(channelId);
   const roundId = startRound(startedBy);
-  const mentions = listMentions();
+  const mentions = listMentions(channelId);
 
   for (const repo of repos) {
     const posted = await client.chat.postMessage({
