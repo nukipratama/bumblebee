@@ -189,6 +189,14 @@ const migrations: string[] = [
      days            TEXT NOT NULL,
      last_fired_date TEXT
    )`,
+  // A repo's applicable squads, comma-joined like `days`. NULL means all 4 squads.
+  `ALTER TABLE cf_repos ADD COLUMN squads TEXT`,
+  // Snapshot of the repo's squads at post time, same encoding. NULL on old rows
+  // (posted before this column existed) also means all 4 squads.
+  `ALTER TABLE cf_messages ADD COLUMN squads TEXT`,
+  // Posting/display order, set from each repo's line number in the settings
+  // form. Existing rows default to 0 (tie, falls back to name) until the next Save.
+  `ALTER TABLE cf_repos ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
 ];
 
 export function initDb(): void {

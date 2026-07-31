@@ -1,7 +1,14 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { statusLabel, type CfStatus, type Squad } from "../../../domain/cf.js";
-import { getMessageByTs, getRepoById, getResponses, listMentions, upsertResponse } from "../../../store/cf.js";
+import {
+  getMessageByTs,
+  getRepoById,
+  getResponses,
+  listMentions,
+  upsertResponse,
+  type CfMessageRef,
+} from "../../../store/cf.js";
 import {
   CF_STATUS_ACTION_PATTERN,
   cfFallbackText,
@@ -16,11 +23,11 @@ async function repost(
   client: WebClient,
   channelId: string,
   messageTs: string,
-  repoId: number,
-  messageId: number,
+  message: CfMessageRef,
 ): Promise<void> {
-  const repo = getRepoById(repoId) ?? { name: "unknown repo" };
-  const responses = getResponses(messageId);
+  const repoRow = getRepoById(message.repoId);
+  const repo = { name: repoRow?.name ?? "unknown repo", squads: message.squads };
+  const responses = getResponses(message.id);
   const mentions = listMentions(channelId);
 
   await client.chat.update({
@@ -52,7 +59,7 @@ export function registerCfStatus(app: App): void {
     upsertResponse(message.id, squad, status, clicker);
 
     try {
-      await repost(client, channelId, messageTs, message.repoId, message.id);
+      await repost(client, channelId, messageTs, message);
     } catch (error) {
       logger.error("updating the Code Freeze post failed", error);
     }

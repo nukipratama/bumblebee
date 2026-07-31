@@ -52,7 +52,7 @@ export function registerCfSettingsForm(app: App): void {
     try {
       const before = buildCfSummary(channelId);
 
-      replaceRepos(channelId, fields.repoNames);
+      replaceRepos(channelId, fields.repoNames, fields.repoSquads);
       if (schedule) setSchedule(channelId, schedule.at, schedule.days);
       else clearSchedule(channelId);
       replaceMentions(channelId, fields.mentions);
