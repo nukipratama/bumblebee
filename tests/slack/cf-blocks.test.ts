@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  CF_REPO_REMOVE_ACTION,
   CF_STATUS_ACTION,
   cfRepoBlocks,
   cfSettingsBlocks,
@@ -91,10 +92,23 @@ describe("cfSettingsBlocks", () => {
     assert.match((repoLine.text as { text: string }).text, /none configured/);
   });
 
-  it("lists configured repos", () => {
-    const [, repoLine] = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
-    assert.ok(repoLine && repoLine.type === "section");
-    assert.match((repoLine.text as { text: string }).text, /mamikos-web, pms/);
+  it("gives each configured repo its own row with a Remove button", () => {
+    const blocks = cfSettingsBlocks({ repoNames: ["mamikos-web", "pms"], mentions: [] });
+    const repoRows = blocks.filter(
+      (block) => block.type === "section" && "accessory" in block && block.accessory,
+    );
+    assert.equal(repoRows.length, 2);
+
+    const names = repoRows.map((row) => (row as { text: { text: string } }).text.text);
+    assert.deepEqual(names, ["`mamikos-web`", "`pms`"]);
+
+    for (const row of repoRows) {
+      const accessory = (row as { accessory: { action_id: string; value: string; confirm: unknown } })
+        .accessory;
+      assert.equal(accessory.action_id, CF_REPO_REMOVE_ACTION);
+      assert.ok(names.includes(`\`${accessory.value}\``));
+      assert.ok(accessory.confirm);
+    }
   });
 
   it("shows 'not configured' when there is no recurring schedule", () => {

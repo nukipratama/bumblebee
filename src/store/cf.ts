@@ -23,6 +23,11 @@ export function replaceRepos(names: readonly string[]): void {
   });
 }
 
+/** Soft-deactivate, same as replaceRepos — past rounds still reference this repo by id. */
+export function removeRepo(name: string): void {
+  stmt("UPDATE cf_repos SET active = 0 WHERE name = ?").run(name);
+}
+
 export function getSchedule(): CfSchedule | undefined {
   return stmt(
     `SELECT channel_id AS channelId, at_time AS at, days, last_fired_date AS lastFiredDate
