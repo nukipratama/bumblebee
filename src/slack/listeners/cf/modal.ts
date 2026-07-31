@@ -1,7 +1,7 @@
 import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { CfMentionTarget } from "../../../domain/cf.js";
 import { clearSchedule, replaceMentions, replaceRepos, setSchedule } from "../../../store/cf.js";
-import { CF_EDIT_SETTINGS_ACTION, cfSettingsBlocks } from "../../cf-blocks.js";
+import { CF_EDIT_SETTINGS_ACTION, cfSettingsBlocks, describeCfSettingsChange } from "../../cf-blocks.js";
 import {
   CF_SETTINGS_FORM,
   cfSettingsModal,
@@ -20,7 +20,7 @@ export function registerCfSettingsForm(app: App): void {
         const channelId = body.channel!.id;
         await client.views.open({
           trigger_id: body.trigger_id,
-          view: cfSettingsModal(buildCfSummary(), { channelId }),
+          view: cfSettingsModal(buildCfSummary(channelId), { channelId }),
         });
       } catch (error) {
         logger.error("opening Code Freeze settings form failed", error);
@@ -82,15 +82,22 @@ export function registerCfSettingsForm(app: App): void {
     await ack();
 
     try {
-      replaceRepos(fields.repoNames);
-      if (schedule) setSchedule(channelId, schedule.at, schedule.days);
-      else clearSchedule();
-      replaceMentions(mentions);
+      const before = buildCfSummary(channelId);
 
-      await client.chat.postMessage({
+      replaceRepos(channelId, fields.repoNames);
+      if (schedule) setSchedule(channelId, schedule.at, schedule.days);
+      else clearSchedule(channelId);
+      replaceMentions(channelId, mentions);
+
+      const after = buildCfSummary(channelId);
+      const change = describeCfSettingsChange(body.user.id, before, after);
+      if (change) await client.chat.postMessage({ channel: channelId, text: change });
+
+      await client.chat.postEphemeral({
         channel: channelId,
+        user: body.user.id,
         text: "Code Freeze Report Configuration",
-        blocks: cfSettingsBlocks(buildCfSummary()),
+        blocks: cfSettingsBlocks(after),
       });
     } catch (error) {
       logger.error("saving Code Freeze settings failed", error);

@@ -4,7 +4,7 @@ import { localParts, type WallClock } from "../domain/clock.js";
 import { matches, matchesLead } from "../domain/schedule.js";
 import type { Reminder } from "../domain/types.js";
 import { listAllReminders } from "../store/reminders.js";
-import { getSchedule, setScheduleLastFiredDate } from "../store/cf.js";
+import { listSchedules, setScheduleLastFiredDate } from "../store/cf.js";
 import { startCfRound } from "./cf.js";
 import { fireReminder, type FireOutcome, postJoin } from "./fire.js";
 
@@ -45,17 +45,18 @@ function duePost(reminder: Reminder, now: WallClock): DuePost | undefined {
 }
 
 async function runCfTick(app: App, wallClock: WallClock): Promise<void> {
-  const schedule = getSchedule();
-  if (!schedule || !matches(schedule, wallClock)) return;
+  for (const schedule of listSchedules()) {
+    if (!matches(schedule, wallClock)) continue;
 
-  try {
-    const result = await startCfRound(app.client, "scheduler", schedule.channelId);
-    setScheduleLastFiredDate(wallClock.date);
-    app.logger.info(
-      `fired Code Freeze round -> ${schedule.channelId} (${result.repoCount} repos)`,
-    );
-  } catch (error) {
-    app.logger.error("Code Freeze scheduled round failed", error);
+    try {
+      const result = await startCfRound(app.client, "scheduler", schedule.channelId);
+      setScheduleLastFiredDate(schedule.channelId, wallClock.date);
+      app.logger.info(
+        `fired Code Freeze round -> ${schedule.channelId} (${result.repoCount} repos)`,
+      );
+    } catch (error) {
+      app.logger.error(`Code Freeze scheduled round failed for ${schedule.channelId}`, error);
+    }
   }
 }
 

@@ -151,6 +151,44 @@ const migrations: string[] = [
      handle    TEXT,
      UNIQUE (kind, target_id)
    )`,
+  // Code Freeze config goes per-channel. SQLite can't alter a UNIQUE constraint
+  // in place, so cf_repos needs a genuine recreate — done with FK enforcement
+  // off, since cf_messages.repo_id has live rows referencing it.
+  `PRAGMA foreign_keys = OFF`,
+  `CREATE TABLE cf_repos_new (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     channel_id TEXT    NOT NULL,
+     name       TEXT    NOT NULL,
+     active     INTEGER NOT NULL DEFAULT 1,
+     created_at TEXT    NOT NULL,
+     UNIQUE (channel_id, name)
+   )`,
+  // C0BK2B1RYBH is the only channel any Code Freeze round has ever posted to.
+  `INSERT INTO cf_repos_new (id, channel_id, name, active, created_at)
+     SELECT id, 'C0BK2B1RYBH', name, active, created_at FROM cf_repos`,
+  `DROP TABLE cf_repos`,
+  `ALTER TABLE cf_repos_new RENAME TO cf_repos`,
+  `PRAGMA foreign_keys = ON`,
+  // Empty in prod — a plain drop-and-recreate is enough to add channel scoping.
+  `DROP TABLE cf_mentions`,
+  `CREATE TABLE cf_mentions (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     channel_id TEXT NOT NULL,
+     kind       TEXT NOT NULL CHECK (kind IN ('user', 'usergroup')),
+     target_id  TEXT NOT NULL,
+     handle     TEXT,
+     UNIQUE (channel_id, kind, target_id)
+   )`,
+  // Empty in prod. channel_id is now the primary key — the channel you
+  // configure from is the channel it posts to, so there is no separate
+  // destination-channel column and no more id=1 singleton.
+  `DROP TABLE cf_schedule`,
+  `CREATE TABLE cf_schedule (
+     channel_id      TEXT PRIMARY KEY,
+     at_time         TEXT NOT NULL,
+     days            TEXT NOT NULL,
+     last_fired_date TEXT
+   )`,
 ];
 
 export function initDb(): void {
