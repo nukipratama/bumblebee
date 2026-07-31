@@ -138,13 +138,14 @@ tests/                          # mirrors the src/ path of what it covers
   one shared channel message, so `chat.update` rewrites it for everyone and Slack has no per-viewer
   rendering. Anything the button said after a click would be said to the whole channel, and hiding it
   would break its second job: anyone declaring they're away, independently of the host's handover.
-  The `🔕 Skip:` line is the shared confirmation, and the dialog — reopening prefilled and retitled —
+  The `🙅 Skip:` line is the shared confirmation, and the dialog — reopening prefilled and retitled —
   carries the per-person one, because it is the only surface rendered for one viewer.
-- **A skip reason lives on the post, never in the thread.** `🔕 Skip:` is a bulleted list, one
-  `• @user - reason` line each, so an edit is just a repaint and a long reason wraps under its own
-  bullet. Reasons are typed into a `plain_text_input`, so escape `&<>` in `blocks.ts` or
-  `<!channel>` in one pings the channel on every repost. **A handover is the one thing that still
-  posts a thread reply** — a card edit notifies nobody, and someone just picked up the job.
+- **A skip reason lives on the post, and every skip also announces in the thread.** `🙅 Skip:` is a
+  bulleted list, one `• @user - reason` line each, so an edit is just a repaint and a long reason
+  wraps under its own bullet. Reasons are typed into a `plain_text_input`, so escape `&<>` in
+  `blocks.ts` or `<!channel>` in one pings the channel on every repost. Every click — plain skip or
+  handover — also posts a thread reply under whichever post was clicked, so the confirmation is never
+  silent even though the card edit alone notifies nobody.
 - **A reminder can post twice.** `reminders.lead_minutes` fires it early with `pre_message` (rendered
   as `Heads Up at {at}: …`); `at` then posts the normal body via `postJoin`. One `reminder_fires` row
   backs both, so `message_ts` **or** `join_message_ts` resolves to it, `repost` rewrites both, and

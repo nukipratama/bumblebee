@@ -13,6 +13,7 @@ import {
   setLap,
 } from "../../store/reminders.js";
 import {
+  escapeMrkdwn,
   fallbackText,
   type PostBody,
   reminderBlocks,
@@ -54,7 +55,7 @@ export function handoverTooLate(
 
 interface SkipOutcome {
   ephemeral?: string;
-  handover?: string;
+  announce?: string;
 }
 
 function handOver(
@@ -89,7 +90,7 @@ function handOver(
   if (!replacement) {
     setFireHost(fire.id, null);
     return {
-      handover:
+      announce:
         `⚠️ Everyone left in the rotation has skipped, so nobody is hosting` +
         ` — <@${clicker}> keeps their turn.`,
     };
@@ -97,8 +98,14 @@ function handOver(
 
   setFireHost(fire.id, replacement);
   return {
-    handover: `🔁 <@${replacement}> is hosting instead — <@${clicker}> keeps their turn.`,
+    announce: `🔁 <@${replacement}> is hosting instead — <@${clicker}> keeps their turn.`,
   };
+}
+
+/** Mirrors `skipLine()`'s reason formatting so the thread notice reads consistently. */
+function skipNotice(reminder: Reminder, clicker: string, reason: string | null): string {
+  const suffix = reason ? ` - ${escapeMrkdwn(reason)}` : "";
+  return `🙅 <@${clicker}> is skipping \`${reminder.code}\`${suffix}`;
 }
 
 export interface SkipRequest {
@@ -117,7 +124,7 @@ export function applySkip({ fire, reminder, clicker, reason, now }: SkipRequest)
   if (fire.hostUserId === clicker) return handOver(fire, reminder, clicker, stored);
 
   addSkip(fire.id, clicker, stored);
-  return {};
+  return { announce: skipNotice(reminder, clicker, stored) };
 }
 
 /** Both posts carry the button and the same skip list, so both are rewritten. */
@@ -264,13 +271,13 @@ async function settle(
     });
   }
 
-  // The reason rides on the posts themselves; a handover is the one thing that
-  // has to reach the person who just picked up the job.
-  if (outcome.handover) {
+  // Announced in the thread of whichever post was clicked, so the confirmation
+  // follows the button rather than always landing on one specific post.
+  if (outcome.announce) {
     await client.chat.postMessage({
       channel: source.channelId,
       thread_ts: source.messageTs,
-      text: outcome.handover,
+      text: outcome.announce,
     });
   }
 

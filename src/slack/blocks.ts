@@ -57,7 +57,7 @@ function skipLine(skip: Skip): string {
 
 /** One line each: a reason runs long, and comma-joining would bury whose it is. */
 function skipList(skips: readonly Skip[]): string {
-  return ["🔕 Skip:", ...skips.map(skipLine)].join("\n");
+  return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
 }
 
 /** Each dialect goes through the block that reads it as written. Never convert. */
