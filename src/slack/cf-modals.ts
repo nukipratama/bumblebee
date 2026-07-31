@@ -17,14 +17,25 @@ export interface CfSettingsData {
   mentions: readonly CfMentionTarget[];
 }
 
+export const MENTION_GROUPS_BLOCK_ID = "mentionGroups";
+export const MENTION_GROUPS_ACTION_ID = "groups";
+
+/** A `multi_external_select` option's value is one opaque string — the group id. */
+export function mentionGroupOptionValue(groupId: string): string {
+  return groupId;
+}
+
 export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource): View {
   const selectedDays = data.schedule ? daysToSelection(data.schedule.days) : [];
   const mentionUserIds = data.mentions
     .filter((target) => target.kind === "user")
     .map((target) => target.id);
-  const mentionGroupHandles = data.mentions
+  const mentionGroupOptions = data.mentions
     .filter((target) => target.kind === "usergroup")
-    .map((target) => target.handle ?? target.id);
+    .map((target) => ({
+      text: { type: "plain_text" as const, text: target.handle ?? `Group ${target.id}` },
+      value: mentionGroupOptionValue(target.id),
+    }));
 
   return {
     type: "modal",
@@ -60,21 +71,16 @@ export function cfSettingsModal(data: CfSettingsData, source: CfSettingsSource):
       },
       {
         type: "input",
-        block_id: "mentionGroups",
+        block_id: MENTION_GROUPS_BLOCK_ID,
         optional: true,
         label: { type: "plain_text", text: "Mention groups" },
-        hint: {
-          type: "plain_text",
-          text: "User group handles to @-mention, one per line, e.g. esls. Leave empty for none.",
-        },
+        hint: { type: "plain_text", text: "User groups to @-mention on every post." },
         element: {
-          type: "plain_text_input",
-          action_id: "value",
-          multiline: true,
-          placeholder: { type: "plain_text", text: "esls" },
-          ...(mentionGroupHandles.length > 0
-            ? { initial_value: mentionGroupHandles.join("\n") }
-            : {}),
+          type: "multi_external_select",
+          action_id: MENTION_GROUPS_ACTION_ID,
+          placeholder: { type: "plain_text", text: "Search user groups" },
+          min_query_length: 0,
+          ...(mentionGroupOptions.length > 0 ? { initial_options: mentionGroupOptions } : {}),
         },
       },
       {
@@ -119,8 +125,7 @@ export interface CfSettingsFields {
   repoNames: string[];
   dayNames: string[];
   at: string;
-  mentionUserIds: string[];
-  mentionGroupHandles: string[];
+  mentions: CfMentionTarget[];
 }
 
 export function readCfSettings(values: Values): CfSettingsFields {
@@ -132,11 +137,17 @@ export function readCfSettings(values: Values): CfSettingsFields {
   const dayNames = (values.days?.value?.selected_options ?? []).map((option) => option.value);
   const at = (values.at?.value?.value ?? "").trim();
   const mentionUserIds = values.mentionUsers?.value?.selected_users ?? [];
-  const mentionGroupsRaw = values.mentionGroups?.value?.value ?? "";
-  const mentionGroupHandles = mentionGroupsRaw
-    .split("\n")
-    .map((line) => line.trim().replace(/^@/, ""))
-    .filter(Boolean);
+  // The picker only ever offers real groups, so the selection is already fully
+  // resolved — no server-side lookup needed, unlike the old typed-handle field.
+  const mentionGroupSelections = values[MENTION_GROUPS_BLOCK_ID]?.value?.selected_options ?? [];
+  const mentions: CfMentionTarget[] = [
+    ...mentionUserIds.map((id) => ({ kind: "user" as const, id })),
+    ...mentionGroupSelections.map((option) => ({
+      kind: "usergroup" as const,
+      id: option.value,
+      handle: option.text.text,
+    })),
+  ];
 
-  return { repoNames, dayNames, at, mentionUserIds, mentionGroupHandles };
+  return { repoNames, dayNames, at, mentions };
 }
