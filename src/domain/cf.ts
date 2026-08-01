@@ -13,6 +13,10 @@ export function isSquad(value: string): value is Squad {
   return (SQUADS as readonly string[]).includes(value);
 }
 
+export function isCfStatus(value: string): value is CfStatus {
+  return value === "all_merged" || value === "no_mr";
+}
+
 export function squadsColumn(chosen: readonly Squad[]): string | null {
   if (chosen.length === 0 || chosen.length === SQUADS.length) return null;
   const set = new Set(chosen);

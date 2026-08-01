@@ -1,10 +1,87 @@
 import type { ViewStateValue } from "@slack/bolt";
 import type { KnownBlock, View } from "@slack/web-api";
-import { SQUADS, isSquad, type CfMentionTarget, type CfRepo, type CfSchedule, type Squad } from "../domain/cf.js";
+import {
+  SQUADS,
+  isSquad,
+  type CfMentionTarget,
+  type CfRepo,
+  type CfSchedule,
+  type CfStatus,
+  type Squad,
+} from "../domain/cf.js";
 import { DAY_NAMES, daysToSelection } from "../domain/days.js";
+import { escapeMrkdwn } from "./blocks.js";
 import { dayOption } from "./modals.js";
 
 export const CF_SETTINGS_FORM = "cf_settings_form";
+
+export const CF_STATUS_MODAL_CANCEL_ACTION = "cf_status_modal_cancel";
+export const CF_STATUS_MODAL_SET_ACTION = "cf_status_modal_set";
+export const CF_STATUS_MODAL_SET_ACTION_PATTERN = new RegExp(`^${CF_STATUS_MODAL_SET_ACTION}_`);
+
+function modalSetActionId(status: CfStatus): string {
+  return `${CF_STATUS_MODAL_SET_ACTION}_${status}`;
+}
+
+/** Rides through `private_metadata` — repo/round context is re-resolved server-side, not stuffed in here. */
+export interface CfStatusModalMetadata {
+  channelId: string;
+  messageTs: string;
+  squad: Squad;
+}
+
+function cfStatusModalTitle(squad: Squad): { type: "plain_text"; text: string } {
+  return { type: "plain_text", text: `Code Freeze — ${squad}` };
+}
+
+export function cfStatusModal(
+  squad: Squad,
+  data: { repoName: string; roundStartedAt?: string },
+  meta: CfStatusModalMetadata,
+): View {
+  const dateLine = data.roundStartedAt ? `\nRound started ${data.roundStartedAt}` : "";
+  return {
+    type: "modal",
+    private_metadata: JSON.stringify(meta),
+    title: cfStatusModalTitle(squad),
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: `${escapeMrkdwn(data.repoName)}${dateLine}` } },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            action_id: CF_STATUS_MODAL_CANCEL_ACTION,
+            text: { type: "plain_text", text: "Cancel" },
+          },
+          {
+            type: "button",
+            action_id: modalSetActionId("no_mr"),
+            style: "danger",
+            text: { type: "plain_text", text: "No MR" },
+            value: "no_mr",
+          },
+          {
+            type: "button",
+            action_id: modalSetActionId("all_merged"),
+            style: "primary",
+            text: { type: "plain_text", text: "All Merged" },
+            value: "all_merged",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Swapped in via `views.update` after Cancel/No MR/All Merged — a modal can't be force-closed from a block action. */
+export function cfStatusResolvedModal(squad: Squad, message: string): View {
+  return {
+    type: "modal",
+    title: cfStatusModalTitle(squad),
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: message } }],
+  };
+}
 
 /** A view submission carries no channel of its own, so it rides through here. */
 export interface CfSettingsSource {

@@ -36,6 +36,10 @@ export function formatTimestamp(iso: string | null): string {
   return `${date} ${time}`;
 }
 
+export function formatDate(iso: string): string {
+  return localParts(new Date(iso)).date;
+}
+
 export function formatNextFire(reminder: Reminder, holidays: ReadonlySet<string>): string {
   const next = nextFire(reminder, new Date(), (date) => holidays.has(date));
   return next ? formatTimestamp(next.toISOString()) : "nothing in the next 4 weeks";
