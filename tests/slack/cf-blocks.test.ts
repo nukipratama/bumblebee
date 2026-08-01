@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CF_REMOVE_CONFIG_ACTION,
-  CF_STATUS_ACTION,
+  CF_STATUS_OPEN_ACTION,
   cfRepoBlocks,
   cfSettingsBlocks,
   describeCfSettingsChange,
-  type CfButtonValue,
   type CfSettingsSummary,
 } from "../../src/slack/cf-blocks.js";
 import { SQUADS, type CfRepo, type CfResponse } from "../../src/domain/cf.js";
@@ -21,17 +20,14 @@ const typeOf = (blocks: ReturnType<typeof cfRepoBlocks>): string[] =>
   blocks.map((block) => block.type);
 
 describe("cfRepoBlocks", () => {
-  it("renders a repo name header, an intro section, then one section+actions pair per squad", () => {
+  it("renders a repo name header, an intro section, one section per squad, then one trailing actions block", () => {
     const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     assert.deepEqual(typeOf(blocks), [
       "header",
       "section",
       "section",
-      "actions",
       "section",
-      "actions",
       "section",
-      "actions",
       "section",
       "actions",
     ]);
@@ -58,25 +54,24 @@ describe("cfRepoBlocks", () => {
     assert.match(text, /<@U1>/);
   });
 
-  it("gives each squad its own actions block with 2 buttons carrying a confirm dialog", () => {
+  it("gives a single trailing actions block with one plain button per squad, no confirm dialog", () => {
     const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     const actionsBlocks = blocks.filter((block) => block.type === "actions");
-    assert.equal(actionsBlocks.length, 4);
+    assert.equal(actionsBlocks.length, 1);
 
-    for (const block of actionsBlocks) {
-      assert.ok(block.type === "actions");
-      assert.equal(block.elements.length, 2);
-      for (const element of block.elements) {
-        assert.ok(element.type === "button");
-        assert.ok(element.action_id?.startsWith(CF_STATUS_ACTION));
-        assert.ok(element.confirm);
-        const value = JSON.parse(element.value!) as CfButtonValue;
-        assert.ok(["all_merged", "no_mr"].includes(value.status));
-      }
+    const [actions] = actionsBlocks;
+    assert.ok(actions && actions.type === "actions");
+    assert.equal(actions.elements.length, SQUADS.length);
+    for (const [index, element] of actions.elements.entries()) {
+      assert.ok(element.type === "button");
+      assert.ok(element.action_id?.startsWith(CF_STATUS_OPEN_ACTION));
+      assert.equal(element.confirm, undefined);
+      assert.equal(element.value, SQUADS[index]);
+      assert.equal((element.text as { text: string }).text, SQUADS[index]);
     }
   });
 
-  it("gives every status button a unique action_id", () => {
+  it("gives every squad button a unique action_id", () => {
     const blocks = cfRepoBlocks(repo("mamikos-web"), []);
     const ids = blocks
       .filter((block) => block.type === "actions")
@@ -104,23 +99,18 @@ describe("cfRepoBlocks", () => {
 
   it("renders only the repo's restricted squads, not all 4", () => {
     const blocks = cfRepoBlocks(repo("pms", ["SS", "LIMO"]), []);
-    const actionsBlocks = blocks.filter((block) => block.type === "actions");
-    assert.equal(actionsBlocks.length, 2);
+    const actions = blocks.find((block) => block.type === "actions");
+    assert.ok(actions && actions.type === "actions");
+    assert.deepEqual(
+      actions.elements.map((el) => (el.type === "button" ? el.value : undefined)),
+      ["SS", "LIMO"],
+    );
     const sectionTexts = blocks
       .filter((block) => block.type === "section")
       .map((block) => (block.text as { text: string }).text);
     assert.ok(sectionTexts.some((text) => text.includes("*SS*")));
     assert.ok(sectionTexts.some((text) => text.includes("*LIMO*")));
     assert.ok(!sectionTexts.some((text) => text.includes("*Core BE*")));
-  });
-
-  it("titles the confirm dialog with the repo name", () => {
-    const blocks = cfRepoBlocks(repo("pms"), []);
-    const actions = blocks.find((block) => block.type === "actions");
-    assert.ok(actions && actions.type === "actions");
-    const button = actions.elements[0];
-    assert.ok(button && button.type === "button" && button.confirm);
-    assert.equal((button.confirm.title as { text: string }).text, "Code Freeze Status — pms");
   });
 });
 

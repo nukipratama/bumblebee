@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { KnownBlock } from "@slack/web-api";
 import {
+  CF_STATUS_MODAL_CANCEL_ACTION,
+  CF_STATUS_MODAL_SET_ACTION_PATTERN,
   MENTION_GROUPS_ACTION_ID,
   MENTION_GROUPS_BLOCK_ID,
   cfSettingsModal,
+  cfStatusModal,
+  cfStatusResolvedModal,
   readCfSettings,
   repoSquadsBlockId,
+  type CfStatusModalMetadata,
   type Values,
 } from "../../src/slack/cf-modals.js";
 import { SQUADS, type CfRepo } from "../../src/domain/cf.js";
@@ -128,5 +134,79 @@ describe("cfSettingsModal", () => {
     const view = cfSettingsModal({ repos: [], mentions: [] }, { channelId: "C1" });
     const squadsBlocks = view.blocks.filter((block) => block.block_id?.startsWith("repoSquads:"));
     assert.equal(squadsBlocks.length, 0);
+  });
+});
+
+describe("cfStatusModal", () => {
+  const meta: CfStatusModalMetadata = { channelId: "C1", messageTs: "123.456", squad: "Core BE" };
+
+  it("keeps the title within Slack's 24-character limit for every squad", () => {
+    for (const squad of SQUADS) {
+      const view = cfStatusModal(squad, { repoName: "mamikos-web" }, { ...meta, squad });
+      assert.ok(view.type === "modal");
+      assert.ok(view.title.text.length <= 24, `"${view.title.text}" is ${view.title.text.length} chars`);
+      assert.match(view.title.text, new RegExp(`${squad}$`));
+    }
+  });
+
+  it("shows the repo name and, when known, the round's start date", () => {
+    const view = cfStatusModal("Core BE", { repoName: "mamikos-web", roundStartedAt: "2026-08-01" }, meta);
+    assert.ok(view.type === "modal");
+    const [intro] = view.blocks as KnownBlock[];
+    assert.ok(intro && intro.type === "section");
+    const text = (intro.text as { text: string }).text;
+    assert.match(text, /mamikos-web/);
+    assert.match(text, /2026-08-01/);
+  });
+
+  it("omits the date line entirely when the round's start date is unknown", () => {
+    const view = cfStatusModal("Core BE", { repoName: "mamikos-web" }, meta);
+    assert.ok(view.type === "modal");
+    const [intro] = view.blocks as KnownBlock[];
+    assert.ok(intro && intro.type === "section");
+    assert.equal((intro.text as { text: string }).text, "mamikos-web");
+  });
+
+  it("renders exactly 3 buttons in order Cancel | No MR | All Merged, styled gray/danger/primary", () => {
+    const view = cfStatusModal("Core BE", { repoName: "mamikos-web" }, meta);
+    assert.ok(view.type === "modal");
+    const actions = (view.blocks as KnownBlock[]).find((block) => block.type === "actions");
+    assert.ok(actions && actions.type === "actions");
+    assert.equal(actions.elements.length, 3);
+
+    const [cancel, noMr, allMerged] = actions.elements;
+    assert.ok(cancel?.type === "button" && noMr?.type === "button" && allMerged?.type === "button");
+
+    assert.equal(cancel.action_id, CF_STATUS_MODAL_CANCEL_ACTION);
+    assert.equal(cancel.text.text, "Cancel");
+    assert.equal(cancel.style, undefined);
+
+    assert.equal(noMr.text.text, "No MR");
+    assert.equal(noMr.value, "no_mr");
+    assert.equal(noMr.style, "danger");
+    assert.match(noMr.action_id!, CF_STATUS_MODAL_SET_ACTION_PATTERN);
+
+    assert.equal(allMerged.text.text, "All Merged");
+    assert.equal(allMerged.value, "all_merged");
+    assert.equal(allMerged.style, "primary");
+    assert.match(allMerged.action_id!, CF_STATUS_MODAL_SET_ACTION_PATTERN);
+  });
+
+  it("round-trips channelId, messageTs, and squad through private_metadata", () => {
+    const view = cfStatusModal("Core BE", { repoName: "mamikos-web" }, meta);
+    assert.deepEqual(JSON.parse(view.private_metadata!) as CfStatusModalMetadata, meta);
+  });
+});
+
+describe("cfStatusResolvedModal", () => {
+  it("keeps the same squad-suffixed title and shows the given message with no buttons", () => {
+    const view = cfStatusResolvedModal("Core BE", "You can close this window.");
+    assert.ok(view.type === "modal");
+    assert.match(view.title.text, /Core BE$/);
+    assert.equal(view.blocks.length, 1);
+    const [section] = view.blocks as KnownBlock[];
+    assert.ok(section && section.type === "section");
+    assert.equal((section.text as { text: string }).text, "You can close this window.");
+    assert.ok(!view.blocks.some((block) => block.type === "actions"));
   });
 });

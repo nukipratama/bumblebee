@@ -134,15 +134,27 @@ export function recordMessage(
 
 export interface CfMessageRef {
   id: number;
+  roundId: number;
   repoId: number;
   squads: readonly Squad[];
 }
 
 export function getMessageByTs(messageTs: string): CfMessageRef | undefined {
-  const row = stmt("SELECT id, repo_id AS repoId, squads FROM cf_messages WHERE message_ts = ?").get(
-    messageTs,
-  ) as unknown as { id: number; repoId: number; squads: string | null } | undefined;
-  return row ? { id: row.id, repoId: row.repoId, squads: squadsFromColumn(row.squads) } : undefined;
+  const row = stmt(
+    "SELECT id, round_id AS roundId, repo_id AS repoId, squads FROM cf_messages WHERE message_ts = ?",
+  ).get(messageTs) as unknown as
+    | { id: number; roundId: number; repoId: number; squads: string | null }
+    | undefined;
+  return row
+    ? { id: row.id, roundId: row.roundId, repoId: row.repoId, squads: squadsFromColumn(row.squads) }
+    : undefined;
+}
+
+export function getRoundStartedAt(roundId: number): string | undefined {
+  const row = stmt("SELECT started_at AS startedAt FROM cf_rounds WHERE id = ?").get(roundId) as
+    | { startedAt: string }
+    | undefined;
+  return row?.startedAt;
 }
 
 /**

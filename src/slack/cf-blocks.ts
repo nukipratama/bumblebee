@@ -2,60 +2,49 @@ import type { KnownBlock } from "@slack/web-api";
 import {
   SQUADS,
   squadStatusLine,
-  statusLabel,
   type CfMentionTarget,
   type CfRepo,
   type CfResponse,
   type CfSchedule,
-  type CfStatus,
   type Squad,
 } from "../domain/cf.js";
 import { escapeMrkdwn } from "./blocks.js";
 import { formatDays, mention } from "./text.js";
 
-export const CF_STATUS_ACTION = "cf_status_set";
-export const CF_STATUS_ACTION_PATTERN = new RegExp(`^${CF_STATUS_ACTION}_`);
+export const CF_STATUS_OPEN_ACTION = "cf_status_open";
+export const CF_STATUS_OPEN_ACTION_PATTERN = new RegExp(`^${CF_STATUS_OPEN_ACTION}_`);
 export const CF_EDIT_SETTINGS_ACTION = "cf_edit_settings";
 export const CF_START_ACTION = "cf_start";
 export const CF_REMOVE_CONFIG_ACTION = "cf_remove_config";
 
 /** Slack requires a unique `action_id` per interactive element in a message. */
-function statusActionId(squad: Squad, status: CfStatus): string {
-  return `${CF_STATUS_ACTION}_${squad.toLowerCase().replace(/\s+/g, "_")}_${status}`;
+function squadSlug(squad: Squad): string {
+  return squad.toLowerCase().replace(/\s+/g, "_");
 }
 
-/** A button's `value`. The message/channel it belongs to comes from the click event itself. */
-export interface CfButtonValue {
-  squad: Squad;
-  status: CfStatus;
+function openActionId(squad: Squad): string {
+  return `${CF_STATUS_OPEN_ACTION}_${squadSlug(squad)}`;
 }
-
-const STATUSES: readonly CfStatus[] = ["all_merged", "no_mr"];
 
 function responseFor(squad: Squad, responses: readonly CfResponse[]): CfResponse | undefined {
   return responses.find((response) => response.squad === squad);
 }
 
-/** A `section`'s accessory holds one element, so two buttons need their own `actions` block. */
-function squadBlocks(repoName: string, squad: Squad, responses: readonly CfResponse[]): KnownBlock[] {
-  return [
-    { type: "section", text: { type: "mrkdwn", text: squadStatusLine(squad, responseFor(squad, responses)) } },
-    {
-      type: "actions",
-      elements: STATUSES.map((status) => ({
-        type: "button" as const,
-        action_id: statusActionId(squad, status),
-        text: { type: "plain_text" as const, text: statusLabel(status) },
-        value: JSON.stringify({ squad, status } satisfies CfButtonValue),
-        confirm: {
-          title: { type: "plain_text" as const, text: `Code Freeze Status — ${repoName}` },
-          text: { type: "mrkdwn" as const, text: `Set *${squad}* to *${statusLabel(status)}*?` },
-          confirm: { type: "plain_text" as const, text: "Yes" },
-          deny: { type: "plain_text" as const, text: "Cancel" },
-        },
-      })),
-    },
-  ];
+function squadSection(squad: Squad, responses: readonly CfResponse[]): KnownBlock {
+  return { type: "section", text: { type: "mrkdwn", text: squadStatusLine(squad, responseFor(squad, responses)) } };
+}
+
+/** One button per squad, opening a modal to report that squad's status. */
+function squadButtonsBlock(squads: readonly Squad[]): KnownBlock {
+  return {
+    type: "actions",
+    elements: squads.map((squad) => ({
+      type: "button" as const,
+      action_id: openActionId(squad),
+      text: { type: "plain_text" as const, text: squad },
+      value: squad,
+    })),
+  };
 }
 
 function mentionText(target: CfMentionTarget): string {
@@ -77,7 +66,8 @@ export function cfRepoBlocks(
         text: `${prefix}Please report status of your Code Freeze (MR to develop) below.`,
       },
     },
-    ...repo.squads.flatMap((squad) => squadBlocks(repo.name, squad, responses)),
+    ...repo.squads.map((squad) => squadSection(squad, responses)),
+    squadButtonsBlock(repo.squads),
   ];
 }
 
