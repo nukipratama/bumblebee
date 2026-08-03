@@ -1,4 +1,6 @@
+import { localParts } from "../../../domain/clock.js";
 import {
+  getFireForDate,
   lastHostedOn,
   listHolidayDates,
   listHosts,
@@ -34,6 +36,7 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
   if (reminder === undefined) return;
 
   const rotation = formatRotation(listHosts(reminder.id), lastHostedOn(reminder.id));
+  const firedToday = Boolean(getFireForDate(reminder.id, localParts(new Date()).date));
   const headsUp = formatHeadsUp(reminder);
   const body = [
     `*\`${reminder.code}\`*`,
@@ -50,6 +53,6 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
 
   await ctx.respond(
     `${reminder.code} — ${formatSchedule(reminder)}`,
-    reminderDetailBlocks({ code: reminder.code, body, rotation }),
+    reminderDetailBlocks({ code: reminder.code, body, rotation, firedToday }),
   );
 }

@@ -2,7 +2,7 @@ export const HELP_TEXT = [
   "*`/bee-remind`* — scheduled reminders for this channel. There are three commands; everything else is a button.",
   "",
   "• `list` — every reminder here. Each row has *Edit*, *Run now* and *Remove*, and *+ New reminder* is at the bottom.",
-  "• `show <code>` — the message, the next fire, and the rotation with *Skip host* and a picker for who's up next.",
+  "• `show <code>` — the message, the next fire, the rotation (*Skip host*, who's up next), and once it's fired today, *Set current host*.",
   "• `holiday` — the shared holiday list, with a date picker to add one and *Remove* on each.",
   "",
   "To turn a message you already wrote into a reminder: ⋮ **More actions** → **Make this a reminder**.",
@@ -12,6 +12,7 @@ export const HELP_TEXT = [
   "• A rotation is the *Host rotation* field on the form — leave it empty for none.",
   "• The order is shuffled, and nobody repeats until everyone has hosted. `show` has the order.",
   "• *Skip host* moves them to the back of this lap — they still get their turn.",
+  "• The rotation controls change future occurrences; *Set current host* changes only today's meeting.",
   "• *Run now* posts immediately, still respecting holidays and cadence.",
   "• A button asks you to confirm; a form's *Create* / *Save* is the confirmation.",
 ].join("\n");

@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { localParts } from "../../../../src/domain/clock.js";
 import { pendingLap } from "../../../../src/domain/rotation.js";
 import type { Reminder } from "../../../../src/domain/types.js";
 import type { PendingAction, PendingEntry } from "../../../../src/slack/pending.js";
-import { fakeClient, newReminder, useTempDatabase } from "../../../helpers/store.js";
+import { fakeClient, fakeLogger, newReminder, useTempDatabase } from "../../../helpers/store.js";
 
 useTempDatabase();
 
 const { initDb, stmt } = await import("../../../../src/store/database.js");
-const { getHoliday, getReminder, insertReminder, listHosts, replaceHosts } = await import(
-  "../../../../src/store/reminders.js"
-);
+const {
+  addSkip,
+  getFireForDate,
+  getHoliday,
+  getReminder,
+  insertReminder,
+  listHosts,
+  recordFire,
+  replaceHosts,
+} = await import("../../../../src/store/reminders.js");
 const { applyAction } = await import("../../../../src/slack/listeners/remind/apply.js");
 
 initDb();
@@ -35,7 +43,8 @@ function seed(overrides: Parameters<typeof newReminder>[0] = {}): Reminder {
   return getReminder(reminder.channelId, reminder.code)!;
 }
 
-const apply = (action: PendingAction) => applyAction(entry(action), fakeClient().client);
+const apply = (action: PendingAction) =>
+  applyAction(entry(action), fakeClient().client, fakeLogger());
 
 describe("remove", () => {
   it("removes the reminder", async () => {
@@ -139,7 +148,7 @@ describe("run", () => {
     replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
     const { client, posted } = fakeClient();
 
-    const result = await applyAction(entry({ kind: "run", code: "standup" }), client);
+    const result = await applyAction(entry({ kind: "run", code: "standup" }), client, fakeLogger());
 
     assert.equal(posted.length, 1);
     assert.match(result.ephemeral, /Posted `standup`.*turn is used/);
@@ -154,9 +163,106 @@ describe("run", () => {
     );
     const { client, posted } = fakeClient();
 
-    const result = await applyAction(entry({ kind: "run", code: "standup" }), client);
+    const result = await applyAction(entry({ kind: "run", code: "standup" }), client, fakeLogger());
 
     assert.equal(posted.length, 0);
     assert.match(result.ephemeral, /Skipped `standup`: cadence/);
+  });
+});
+
+describe("host current", () => {
+  const TODAY = localParts(new Date()).date;
+  // Within the 30-minute window regardless of when the test suite happens to run.
+  const NOW_TIME = localParts(new Date()).time;
+  const MESSAGE_TS = "1700000000.0001";
+
+  function fireToday(reminder: Reminder, hostUserId: string | null): void {
+    recordFire({
+      reminderId: reminder.id,
+      firedOn: TODAY,
+      firedAt: new Date(),
+      hostUserId,
+      messageTs: MESSAGE_TS,
+      nextLap: [],
+    });
+  }
+
+  const hostCurrent = (userId: string): PendingAction => ({
+    kind: "hostCurrent",
+    code: "standup",
+    userId,
+  });
+
+  it("sets the new host and reposts the live message", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    fireToday(reminder, "U_A");
+    const { client, updated } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.equal(getFireForDate(reminder.id, TODAY)?.hostUserId, "U_B");
+    assert.equal(updated.length, 1);
+    assert.match(result.ephemeral, /<@U_B> is now hosting/);
+    assert.match(result.channel ?? "", /set <@U_B> as the current host/);
+  });
+
+  it("refuses when nothing has fired today", async () => {
+    const reminder = seed();
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    const { client } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.match(result.ephemeral, /hasn't fired yet today/);
+  });
+
+  it("refuses to pick the person already hosting", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    fireToday(reminder, "U_A");
+    const { client } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_A")), client, fakeLogger());
+
+    assert.match(result.ephemeral, /already hosting/);
+  });
+
+  it("refuses a target who is not on the roster", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    fireToday(reminder, "U_A");
+    const { client } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_OUTSIDER")), client, fakeLogger());
+
+    assert.match(result.ephemeral, /not on the rotation/);
+  });
+
+  it("refuses to set someone who already skipped today", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    fireToday(reminder, "U_A");
+    addSkip(getFireForDate(reminder.id, TODAY)!.id, "U_B", null);
+    const { client } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.match(result.ephemeral, /already skipped/);
+    assert.equal(getFireForDate(reminder.id, TODAY)?.hostUserId, "U_A");
+  });
+
+  it("reports an accurate message when reposting the live message fails", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
+    fireToday(reminder, "U_A");
+    const { client } = fakeClient(undefined, async () => {
+      throw new Error("message not found");
+    });
+
+    const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.equal(getFireForDate(reminder.id, TODAY)?.hostUserId, "U_B");
+    assert.match(result.ephemeral, /couldn't update the live post/);
   });
 });

@@ -10,6 +10,7 @@ export const RUN_REMINDER_ACTION = "remind_run";
 export const REMOVE_REMINDER_ACTION = "remind_remove";
 export const HOST_SKIP_ACTION = "remind_host_skip";
 export const HOST_NEXT_ACTION = "remind_host_next";
+export const HOST_CURRENT_ACTION = "remind_host_current";
 
 export interface ReminderPost {
   code: string;
@@ -216,36 +217,66 @@ export function reminderListBlocks(rows: readonly ReminderRow[]): KnownBlock[] {
   ];
 }
 
+const CURRENT_HOST_BLOCK_PREFIX = "current:";
+export const currentHostBlockId = (code: string): string => `${CURRENT_HOST_BLOCK_PREFIX}${code}`;
+export const codeFromCurrentHostBlockId = (blockId: string): string =>
+  blockId.slice(CURRENT_HOST_BLOCK_PREFIX.length);
+
 export interface ReminderDetail {
   code: string;
   body: string;
   /** Absent when the reminder has no roster, which is also when the lap controls make no sense. */
   rotation?: string;
+  /** Whether today's fire exists yet — the current-host control needs one to act on. */
+  firedToday?: boolean;
 }
+
+const context = (text: string): KnownBlock => ({ type: "context", elements: [{ type: "mrkdwn", text }] });
+
+const currentHostBlocks = (code: string): KnownBlock[] => [
+  context("📌 *Current* — changes only this occurrence's host, not the rotation."),
+  {
+    type: "actions",
+    block_id: currentHostBlockId(code),
+    elements: [
+      {
+        type: "users_select",
+        action_id: HOST_CURRENT_ACTION,
+        placeholder: { type: "plain_text", text: "Set current host" },
+      },
+    ],
+  },
+];
 
 export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
   const blocks: KnownBlock[] = [{ type: "section", text: { type: "mrkdwn", text: detail.body } }];
   if (!detail.rotation) return blocks;
 
-  blocks.push({ type: "section", text: { type: "mrkdwn", text: detail.rotation } });
-  blocks.push({
-    type: "actions",
-    // A users_select has no value of its own, so the code rides on the block.
-    block_id: detail.code,
-    elements: [
-      {
-        type: "button",
-        action_id: HOST_SKIP_ACTION,
-        text: { type: "plain_text", text: "Skip host" },
-        value: detail.code,
-      },
-      {
-        type: "users_select",
-        action_id: HOST_NEXT_ACTION,
-        placeholder: { type: "plain_text", text: "Put someone up next" },
-      },
-    ],
-  });
+  blocks.push(
+    { type: "section", text: { type: "mrkdwn", text: detail.rotation } },
+    context("🔁 *Rotation* — changes who's up in future occurrences, not who's hosting today."),
+    {
+      type: "actions",
+      // A users_select has no value of its own, so the code rides on the block.
+      block_id: detail.code,
+      elements: [
+        {
+          type: "button",
+          action_id: HOST_SKIP_ACTION,
+          text: { type: "plain_text", text: "Skip host" },
+          value: detail.code,
+        },
+        {
+          type: "users_select",
+          action_id: HOST_NEXT_ACTION,
+          placeholder: { type: "plain_text", text: "Put someone up next" },
+        },
+      ],
+    },
+    ...(detail.firedToday
+      ? currentHostBlocks(detail.code)
+      : [context(`📌 Current host can be set once \`${detail.code}\` has fired today.`)]),
+  );
 
   return blocks;
 }

@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LogLevel, type Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import type { NewReminder } from "../../src/domain/types.js";
 
@@ -40,24 +41,52 @@ export interface PostedMessage {
   unfurl_media?: boolean;
 }
 
+export interface UpdatedMessage {
+  channel: string;
+  ts: string;
+  blocks?: unknown[];
+  text?: string;
+}
+
 export interface FakeClient {
   client: WebClient;
   posted: PostedMessage[];
+  updated: UpdatedMessage[];
 }
 
 /** A stand-in for the parts of WebClient the reminder path touches. */
 export function fakeClient(
   postMessage: (args: PostedMessage) => Promise<{ ts?: string }> = async () => ({ ts: "1.1" }),
+  chatUpdate: (args: UpdatedMessage) => Promise<unknown> = async () => ({}),
 ): FakeClient {
   const posted: PostedMessage[] = [];
+  const updated: UpdatedMessage[] = [];
   const client = {
     chat: {
       postMessage: async (args: PostedMessage) => {
         posted.push(args);
         return postMessage(args);
       },
+      update: async (args: UpdatedMessage) => {
+        updated.push(args);
+        return chatUpdate(args);
+      },
     },
   } as unknown as WebClient;
 
-  return { client, posted };
+  return { client, posted, updated };
+}
+
+/** A stand-in Logger — does nothing instead of writing to stdout/stderr. */
+export function fakeLogger(): Logger {
+  const noop = (): void => undefined;
+  return {
+    debug: noop,
+    info: noop,
+    warn: noop,
+    error: noop,
+    setLevel: noop,
+    getLevel: () => LogLevel.ERROR,
+    setName: noop,
+  };
 }
