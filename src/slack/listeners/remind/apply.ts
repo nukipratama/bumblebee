@@ -1,13 +1,11 @@
 import type { Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { fireReminder } from "../../../app/fire.js";
-import { localParts } from "../../../domain/clock.js";
 import { drawLapAvoiding, moveToBack, moveToFront, pendingLap } from "../../../domain/rotation.js";
 import { repost } from "../../repost.js";
 import {
   deleteHoliday,
   deleteReminder,
-  getFireForDate,
   getHoliday,
   getReminder,
   insertHoliday,
@@ -133,8 +131,7 @@ async function applyHostCurrent(
   if ("error" in check) return { ephemeral: check.error };
 
   setFireHost(check.fire.id, userId);
-  // Re-read: setFireHost just changed the row repost() needs to render.
-  const updated = getFireForDate(reminder.id, localParts(new Date()).date) ?? check.fire;
+  const updated = { ...check.fire, hostUserId: userId };
 
   try {
     await repost(client, updated, reminder, entry.channelId);
