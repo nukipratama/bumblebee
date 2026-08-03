@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   EDIT_REMINDER_ACTION,
+  HOST_CURRENT_ACTION,
   NEW_REMINDER_ACTION,
   REMOVE_REMINDER_ACTION,
   RUN_REMINDER_ACTION,
+  currentHostBlockId,
   fallbackText,
   reminderBlocks,
+  reminderDetailBlocks,
   reminderListBlocks,
   SKIP_ACTION,
   type ReminderPost,
@@ -228,5 +231,72 @@ describe("reminderListBlocks", () => {
     );
     assert.ok(note, "expected a note naming the overflow");
     assert.ok(JSON.stringify(note).includes("r24"));
+  });
+});
+
+describe("reminderDetailBlocks", () => {
+  const actionsBlocks = (blocks: ReturnType<typeof reminderDetailBlocks>) =>
+    blocks.filter((block) => block.type === "actions");
+
+  it("has no rotation section at all without a roster", () => {
+    const blocks = reminderDetailBlocks({ code: "standup", body: "hi" });
+    assert.ok(!blocks.some((block) => block.type === "actions"));
+  });
+
+  it("shows the current-host picker once it has fired today", () => {
+    const blocks = reminderDetailBlocks({
+      code: "standup",
+      body: "hi",
+      rotation: "*rotation*",
+      firedToday: true,
+    });
+
+    const actions = actionsBlocks(blocks);
+    assert.equal(actions.length, 2);
+    assert.equal(actions[0]!.block_id, "standup");
+    assert.equal(actions[1]!.block_id, currentHostBlockId("standup"));
+    assert.deepEqual(actions[1]!.elements, [
+      {
+        type: "users_select",
+        action_id: HOST_CURRENT_ACTION,
+        placeholder: { type: "plain_text", text: "Set current host" },
+      },
+    ]);
+    assert.ok(JSON.stringify(blocks).includes("Rotation"));
+    assert.ok(JSON.stringify(blocks).includes("Current"));
+  });
+
+  it("hides the picker and explains why when nothing has fired today", () => {
+    const blocks = reminderDetailBlocks({
+      code: "standup",
+      body: "hi",
+      rotation: "*rotation*",
+      firedToday: false,
+    });
+
+    const actions = actionsBlocks(blocks);
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0]!.block_id, "standup");
+    assert.ok(JSON.stringify(blocks).includes("can be set once `standup` has fired today"));
+  });
+
+  it("defaults to hidden when firedToday is not passed", () => {
+    const blocks = reminderDetailBlocks({ code: "standup", body: "hi", rotation: "*rotation*" });
+    assert.equal(actionsBlocks(blocks).length, 1);
+  });
+
+  it("leaves the existing rotation row's block id and elements untouched", () => {
+    const blocks = reminderDetailBlocks({
+      code: "standup",
+      body: "hi",
+      rotation: "*rotation*",
+      firedToday: true,
+    });
+
+    const rotationRow = actionsBlocks(blocks)[0]!;
+    assert.equal(rotationRow.block_id, "standup");
+    assert.equal(rotationRow.elements.length, 2);
+    assert.equal(rotationRow.elements[0]!.type, "button");
+    assert.equal(rotationRow.elements[1]!.type, "users_select");
   });
 });

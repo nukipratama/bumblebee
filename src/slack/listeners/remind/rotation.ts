@@ -1,8 +1,9 @@
 import type { App, BlockAction, ButtonAction, UsersSelectAction } from "@slack/bolt";
 import { hasHosted, pendingLap } from "../../../domain/rotation.js";
 import { lastHostedOn, listHosts } from "../../../store/reminders.js";
-import { HOST_NEXT_ACTION, HOST_SKIP_ACTION } from "../../blocks.js";
+import { codeFromCurrentHostBlockId, HOST_CURRENT_ACTION, HOST_NEXT_ACTION, HOST_SKIP_ACTION } from "../../blocks.js";
 import { mention } from "../../text.js";
+import { checkHostCurrent } from "./hostCurrent.js";
 import { askFromRow, type Prompt } from "./prompt.js";
 
 const NO_ROTATION = (code: string): Prompt => ({
@@ -66,6 +67,29 @@ export function registerRotationActions(app: App): void {
         }
 
         return { summary: lines.join("\n"), action: { kind: "hostNext", code, userId } };
+      });
+    },
+  );
+
+  app.action<BlockAction<UsersSelectAction>>(
+    HOST_CURRENT_ACTION,
+    async ({ ack, body, respond, logger }) => {
+      await ack();
+      // A users_select carries no value of its own, so its block holds the code.
+      const selected = body.actions[0]!;
+      const code = codeFromCurrentHostBlockId(selected.block_id);
+      const userId = selected.selected_user!;
+
+      await askFromRow({ body, respond, logger }, code, (reminder) => {
+        const check = checkHostCurrent(reminder, userId, Date.now());
+        if ("error" in check) return { error: check.error };
+
+        return {
+          summary:
+            `Set ${mention(userId)} as the current host for \`${code}\`?\n` +
+            "This changes only today's meeting — the rotation is unaffected.",
+          action: { kind: "hostCurrent", code, userId },
+        };
       });
     },
   );

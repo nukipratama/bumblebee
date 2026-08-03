@@ -1,6 +1,8 @@
+import type { Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { fireReminder } from "../../../app/fire.js";
 import { drawLapAvoiding, moveToBack, moveToFront, pendingLap } from "../../../domain/rotation.js";
+import { repost } from "../../repost.js";
 import {
   deleteHoliday,
   deleteReminder,
@@ -9,10 +11,12 @@ import {
   insertHoliday,
   listHolidayDates,
   listHosts,
+  setFireHost,
   setLap,
 } from "../../../store/reminders.js";
 import type { PendingEntry } from "../../pending.js";
 import { formatNextFire, mention } from "../../text.js";
+import { checkHostCurrent } from "./hostCurrent.js";
 
 export interface ApplyResult {
   ephemeral: string;
@@ -113,8 +117,43 @@ function applyHostNext(entry: PendingEntry, code: string, userId: string): Apply
   };
 }
 
+async function applyHostCurrent(
+  entry: PendingEntry,
+  code: string,
+  userId: string,
+  client: WebClient,
+  logger: Logger,
+): Promise<ApplyResult> {
+  const reminder = getReminder(entry.channelId, code);
+  if (!reminder) return gone(code);
+
+  const check = checkHostCurrent(reminder, userId, Date.now());
+  if ("error" in check) return { ephemeral: check.error };
+
+  setFireHost(check.fire.id, userId);
+  const updated = { ...check.fire, hostUserId: userId };
+
+  try {
+    await repost(client, updated, reminder, entry.channelId);
+  } catch (error) {
+    logger.error("updating the post failed", error);
+    return {
+      ephemeral: `${mention(userId)} is now hosting \`${code}\`, but I couldn't update the live post — it may have been deleted.`,
+    };
+  }
+
+  return {
+    ephemeral: `${mention(userId)} is now hosting \`${code}\`.`,
+    channel: `${mention(entry.userId)} set ${mention(userId)} as the current host for \`${code}\``,
+  };
+}
+
 /** Every branch re-reads current state, because it can change between the prompt and the click. */
-export async function applyAction(entry: PendingEntry, client: WebClient): Promise<ApplyResult> {
+export async function applyAction(
+  entry: PendingEntry,
+  client: WebClient,
+  logger: Logger,
+): Promise<ApplyResult> {
   const { action } = entry;
 
   switch (action.kind) {
@@ -130,5 +169,7 @@ export async function applyAction(entry: PendingEntry, client: WebClient): Promi
       return applyHostSkip(entry, action.code);
     case "hostNext":
       return applyHostNext(entry, action.code, action.userId);
+    case "hostCurrent":
+      return applyHostCurrent(entry, action.code, action.userId, client, logger);
   }
 }

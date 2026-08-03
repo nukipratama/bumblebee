@@ -26,7 +26,7 @@ const RETIRED: Record<string, string> = {
   edit: `\`edit\` is a form now. ${LIST_IT} and click *Edit* on the row.`,
   run: `\`run\` is a button now. ${LIST_IT} and click *Run now* on the row.`,
   remove: `\`remove\` is a button now. ${LIST_IT} and click *Remove* on the row.`,
-  host: "The roster is the *Host rotation* field on the reminder's form. `/bee-remind show <code>` has *Skip host* and a picker for who is up next.",
+  host: "The roster is the *Host rotation* field on the reminder's form. `/bee-remind show <code>` has *Skip host* and a picker for who is up next (the rotation), plus *Set current host* once it's fired today (this occurrence only).",
   pause: "Pausing is gone — remove the reminder instead, or edit it to a schedule you want.",
   resume: "Pausing is gone, so there is nothing to resume.",
 };
@@ -94,7 +94,7 @@ async function resolveConfirmation({
   }
 
   try {
-    const result = await applyAction(entry, client);
+    const result = await applyAction(entry, client, logger);
     await respond({ replace_original: true, text: result.ephemeral });
     if (result.channel) {
       await client.chat.postMessage({ channel: entry.channelId, text: result.channel });

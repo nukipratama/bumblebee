@@ -1,7 +1,9 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
+import { hostChangeOpen } from "../../domain/handover.js";
 import { drawLapAvoiding, pendingLap } from "../../domain/rotation.js";
 import type { Fire, Reminder } from "../../domain/types.js";
+import { repost } from "../repost.js";
 import {
   addSkip,
   getFireByMessageTs,
@@ -12,34 +14,10 @@ import {
   setFireHost,
   setLap,
 } from "../../store/reminders.js";
-import {
-  escapeMrkdwn,
-  fallbackText,
-  type PostBody,
-  reminderBlocks,
-  reminderBody,
-  SKIP_ACTION,
-} from "../blocks.js";
+import { escapeMrkdwn, SKIP_ACTION } from "../blocks.js";
 import { SKIP_FORM, type SkipSource, readSkipReason, skipModal } from "../modals.js";
 
-const HANDOVER_GRACE_MS = 30 * 60_000;
-
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
-
-/** Local, because `fired_on` is a date and the whole scheduler reads the local clock. */
-function meetingTimeMs(fire: Fire, reminder: Reminder): number {
-  return new Date(`${fire.firedOn}T${reminder.at}:00`).getTime();
-}
-
-/**
- * Past this the meeting has effectively happened, and rewriting who was
- * responsible revises history. Measured from the meeting rather than the fire: a
- * reminder with a lead fires while nobody is in the call yet. Attendance has no
- * such limit — it changes nothing anyone acted on.
- */
-function handoverOpen(fire: Fire, reminder: Reminder, now: number): boolean {
-  return now <= meetingTimeMs(fire, reminder) + HANDOVER_GRACE_MS;
-}
 
 /** Undefined when they may go ahead. Checked on the click and again on submit. */
 export function handoverTooLate(
@@ -48,7 +26,7 @@ export function handoverTooLate(
   clicker: string,
   now: number,
 ): string | undefined {
-  return fire.hostUserId === clicker && !handoverOpen(fire, reminder, now)
+  return fire.hostUserId === clicker && !hostChangeOpen(fire, reminder, now)
     ? `\`${reminder.code}\` started over 30 minutes ago — too late to hand over hosting.`
     : undefined;
 }
@@ -125,50 +103,6 @@ export function applySkip({ fire, reminder, clicker, reason, now }: SkipRequest)
 
   addSkip(fire.id, clicker, stored);
   return { announce: skipNotice(reminder, clicker, stored) };
-}
-
-/** Both posts carry the button and the same skip list, so both are rewritten. */
-function postsOf(fire: Fire, reminder: Reminder): { ts: string; which: PostBody }[] {
-  const posts: { ts: string; which: PostBody }[] = [];
-  if (fire.messageTs) {
-    posts.push({ ts: fire.messageTs, which: reminder.leadMinutes > 0 ? "heads-up" : "meeting" });
-  }
-  if (fire.joinMessageTs) posts.push({ ts: fire.joinMessageTs, which: "meeting" });
-  return posts;
-}
-
-async function repost(
-  client: WebClient,
-  fire: Fire,
-  reminder: Reminder,
-  channelId: string,
-  messageTs: string,
-): Promise<void> {
-  // Re-read rather than reuse `fire`: a handover has just changed the host.
-  const current = getFireByMessageTs(messageTs) ?? fire;
-
-  const hasRoster = listHosts(reminder.id).length > 0;
-  const skips = listSkips(current.id);
-
-  for (const { ts, which } of postsOf(current, reminder)) {
-    const post = {
-      code: reminder.code,
-      ...reminderBody(reminder, which),
-      host: current.hostUserId ?? undefined,
-      // A rostered reminder always names a host when it fires, so losing one means
-      // a handover found nobody available.
-      hostUnavailable: hasRoster && !current.hostUserId,
-      skips,
-      skippable: hasRoster,
-    };
-
-    await client.chat.update({
-      channel: channelId,
-      ts,
-      blocks: reminderBlocks(post),
-      text: fallbackText(post),
-    });
-  }
 }
 
 async function openSkipForm(body: BlockAction<ButtonAction>, client: WebClient): Promise<void> {
@@ -251,7 +185,9 @@ async function settle(
   logger: Logger,
 ): Promise<void> {
   try {
-    await repost(client, fire, reminder, source.channelId, source.messageTs);
+    // Re-read rather than reuse `fire`: a handover has just changed the host.
+    const current = getFireByMessageTs(source.messageTs) ?? fire;
+    await repost(client, current, reminder, source.channelId);
   } catch (error) {
     logger.error("updating the post failed", error);
     await client.chat
