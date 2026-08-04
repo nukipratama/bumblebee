@@ -110,7 +110,7 @@ export function registerRemind(app: App): void {
   registerRotationActions(app);
   registerHolidayActions(app);
 
-  app.command("/bee-remind", async ({ ack, command, respond, logger }) => {
+  app.command("/bee-remind", async ({ ack, command, respond, client, logger }) => {
     await ack();
 
     if (command.channel_id.startsWith("D")) {
@@ -121,6 +121,7 @@ export function registerRemind(app: App): void {
     const ctx: CommandContext = {
       channelId: command.channel_id,
       userId: command.user_id,
+      client,
       respond: (text, blocks) => respond(blocks ? { text, blocks } : text),
       ask: async (summary, action) => {
         const pendingId = put({

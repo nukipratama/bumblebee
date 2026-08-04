@@ -7,6 +7,7 @@ import {
   listReminders,
 } from "../../../store/reminders.js";
 import { reminderDetailBlocks, reminderListBlocks } from "../../blocks.js";
+import { resolveDisplayNames } from "../../names.js";
 import {
   formatHeadsUp,
   formatNextFire,
@@ -35,7 +36,16 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
   const reminder = await unwrap(ctx, requireReminder(ctx.channelId, code));
   if (reminder === undefined) return;
 
-  const rotation = formatRotation(listHosts(reminder.id), lastHostedOn(reminder.id));
+  const roster = listHosts(reminder.id);
+  const rotation = formatRotation(roster, lastHostedOn(reminder.id));
+  const names = await resolveDisplayNames(
+    ctx.client,
+    roster.map((member) => member.userId),
+  );
+  const hostOptions = roster.map((member) => ({
+    userId: member.userId,
+    label: names.get(member.userId) ?? member.userId,
+  }));
   const firedToday = Boolean(getFireForDate(reminder.id, localParts(new Date()).date));
   const headsUp = formatHeadsUp(reminder);
   const body = [
@@ -53,6 +63,6 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
 
   await ctx.respond(
     `${reminder.code} — ${formatSchedule(reminder)}`,
-    reminderDetailBlocks({ code: reminder.code, body, rotation, firedToday }),
+    reminderDetailBlocks({ code: reminder.code, body, rotation, hostOptions, firedToday }),
   );
 }

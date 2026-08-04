@@ -222,27 +222,41 @@ export const currentHostBlockId = (code: string): string => `${CURRENT_HOST_BLOC
 export const codeFromCurrentHostBlockId = (blockId: string): string =>
   blockId.slice(CURRENT_HOST_BLOCK_PREFIX.length);
 
+export interface HostOption {
+  userId: string;
+  label: string;
+}
+
 export interface ReminderDetail {
   code: string;
   body: string;
   /** Absent when the reminder has no roster, which is also when the lap controls make no sense. */
   rotation?: string;
+  /** Same absence as `rotation` — the picker options are the roster, named for the select. */
+  hostOptions?: HostOption[];
   /** Whether today's fire exists yet — the current-host control needs one to act on. */
   firedToday?: boolean;
 }
 
 const context = (text: string): KnownBlock => ({ type: "context", elements: [{ type: "mrkdwn", text }] });
 
-const currentHostBlocks = (code: string): KnownBlock[] => [
+const hostSelectOptions = (options: readonly HostOption[]) =>
+  options.map((option) => ({
+    text: { type: "plain_text" as const, text: option.label },
+    value: option.userId,
+  }));
+
+const currentHostBlocks = (code: string, options: readonly HostOption[]): KnownBlock[] => [
   context("📌 *Current* — changes only this occurrence's host, not the rotation."),
   {
     type: "actions",
     block_id: currentHostBlockId(code),
     elements: [
       {
-        type: "users_select",
+        type: "static_select",
         action_id: HOST_CURRENT_ACTION,
         placeholder: { type: "plain_text", text: "Set current host" },
+        options: hostSelectOptions(options),
       },
     ],
   },
@@ -252,12 +266,14 @@ export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
   const blocks: KnownBlock[] = [{ type: "section", text: { type: "mrkdwn", text: detail.body } }];
   if (!detail.rotation) return blocks;
 
+  const hostOptions = detail.hostOptions ?? [];
+
   blocks.push(
     { type: "section", text: { type: "mrkdwn", text: detail.rotation } },
     context("🔁 *Rotation* — changes who's up in future occurrences, not who's hosting today."),
     {
       type: "actions",
-      // A users_select has no value of its own, so the code rides on the block.
+      // A static_select has no value of its own, so the code rides on the block.
       block_id: detail.code,
       elements: [
         {
@@ -267,14 +283,15 @@ export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
           value: detail.code,
         },
         {
-          type: "users_select",
+          type: "static_select",
           action_id: HOST_NEXT_ACTION,
           placeholder: { type: "plain_text", text: "Put someone up next" },
+          options: hostSelectOptions(hostOptions),
         },
       ],
     },
     ...(detail.firedToday
-      ? currentHostBlocks(detail.code)
+      ? currentHostBlocks(detail.code, hostOptions)
       : [context(`📌 Current host can be set once \`${detail.code}\` has fired today.`)]),
   );
 

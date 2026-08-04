@@ -243,11 +243,12 @@ describe("reminderDetailBlocks", () => {
     assert.ok(!blocks.some((block) => block.type === "actions"));
   });
 
-  it("shows the current-host picker once it has fired today", () => {
+  it("shows the current-host picker once it has fired today, scoped to the roster", () => {
     const blocks = reminderDetailBlocks({
       code: "standup",
       body: "hi",
       rotation: "*rotation*",
+      hostOptions: [{ userId: "U1", label: "Alice" }],
       firedToday: true,
     });
 
@@ -257,9 +258,10 @@ describe("reminderDetailBlocks", () => {
     assert.equal(actions[1]!.block_id, currentHostBlockId("standup"));
     assert.deepEqual(actions[1]!.elements, [
       {
-        type: "users_select",
+        type: "static_select",
         action_id: HOST_CURRENT_ACTION,
         placeholder: { type: "plain_text", text: "Set current host" },
+        options: [{ text: { type: "plain_text", text: "Alice" }, value: "U1" }],
       },
     ]);
     assert.ok(JSON.stringify(blocks).includes("Rotation"));
@@ -297,6 +299,6 @@ describe("reminderDetailBlocks", () => {
     assert.equal(rotationRow.block_id, "standup");
     assert.equal(rotationRow.elements.length, 2);
     assert.equal(rotationRow.elements[0]!.type, "button");
-    assert.equal(rotationRow.elements[1]!.type, "users_select");
+    assert.equal(rotationRow.elements[1]!.type, "static_select");
   });
 });

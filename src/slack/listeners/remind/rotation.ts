@@ -1,4 +1,4 @@
-import type { App, BlockAction, ButtonAction, UsersSelectAction } from "@slack/bolt";
+import type { App, BlockAction, ButtonAction, StaticSelectAction } from "@slack/bolt";
 import { hasHosted, pendingLap } from "../../../domain/rotation.js";
 import { lastHostedOn, listHosts } from "../../../store/reminders.js";
 import { codeFromCurrentHostBlockId, HOST_CURRENT_ACTION, HOST_NEXT_ACTION, HOST_SKIP_ACTION } from "../../blocks.js";
@@ -45,14 +45,14 @@ export function registerRotationActions(app: App): void {
     },
   );
 
-  app.action<BlockAction<UsersSelectAction>>(
+  app.action<BlockAction<StaticSelectAction>>(
     HOST_NEXT_ACTION,
     async ({ ack, body, respond, logger }) => {
       await ack();
-      // A users_select carries no value of its own, so its block holds the code.
+      // A static_select carries no value of its own, so its block holds the code.
       const selected = body.actions[0]!;
       const code = selected.block_id;
-      const userId = selected.selected_user!;
+      const userId = selected.selected_option!.value;
 
       await askFromRow({ body, respond, logger }, code, (reminder) => {
         const member = listHosts(reminder.id).find((entry) => entry.userId === userId);
@@ -71,14 +71,14 @@ export function registerRotationActions(app: App): void {
     },
   );
 
-  app.action<BlockAction<UsersSelectAction>>(
+  app.action<BlockAction<StaticSelectAction>>(
     HOST_CURRENT_ACTION,
     async ({ ack, body, respond, logger }) => {
       await ack();
-      // A users_select carries no value of its own, so its block holds the code.
+      // A static_select carries no value of its own, so its block holds the code.
       const selected = body.actions[0]!;
       const code = codeFromCurrentHostBlockId(selected.block_id);
-      const userId = selected.selected_user!;
+      const userId = selected.selected_option!.value;
 
       await askFromRow({ body, respond, logger }, code, (reminder) => {
         const check = checkHostCurrent(reminder, userId, Date.now());

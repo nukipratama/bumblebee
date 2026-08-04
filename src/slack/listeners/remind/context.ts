@@ -1,4 +1,4 @@
-import type { KnownBlock } from "@slack/web-api";
+import type { KnownBlock, WebClient } from "@slack/web-api";
 import { fail, ok, type Parsed } from "../../../domain/result.js";
 import type { Reminder } from "../../../domain/types.js";
 import { getReminder } from "../../../store/reminders.js";
@@ -7,6 +7,7 @@ import type { PendingAction } from "../../pending.js";
 export interface CommandContext {
   channelId: string;
   userId: string;
+  client: WebClient;
   /** `text` is the notification fallback whenever blocks are supplied. */
   respond: (text: string, blocks?: KnownBlock[]) => Promise<unknown>;
   ask: (summary: string, action: PendingAction) => Promise<void>;
