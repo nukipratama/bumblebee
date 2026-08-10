@@ -122,6 +122,7 @@ export function registerRemind(app: App): void {
       channelId: command.channel_id,
       userId: command.user_id,
       client,
+      logger,
       respond: (text, blocks) => respond(blocks ? { text, blocks } : text),
       ask: async (summary, action) => {
         const pendingId = put({

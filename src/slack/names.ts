@@ -1,3 +1,4 @@
+import type { Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 
 /**
@@ -6,6 +7,7 @@ import type { WebClient } from "@slack/web-api";
  */
 export async function resolveDisplayNames(
   client: WebClient,
+  logger: Logger,
   userIds: readonly string[],
 ): Promise<Map<string, string>> {
   const entries = await Promise.all(
@@ -13,7 +15,8 @@ export async function resolveDisplayNames(
       try {
         const { user } = await client.users.info({ user: userId });
         return [userId, user?.profile?.display_name || user?.real_name || user?.name || userId];
-      } catch {
+      } catch (error) {
+        logger.error(`users.info failed for ${userId}, falling back to raw ID`, error);
         return [userId, userId];
       }
     }),
