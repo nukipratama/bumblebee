@@ -46,13 +46,19 @@ export function reminderBody(
 
 const mention = (userId: string): string => `<@${userId}>`;
 
-/** A reason is typed literally, so `<!channel>` in one must not become a ping. */
+/** Escapes control characters in one literal text run, so pasted `<!channel>`-lookalike
+ *  text renders as inert text rather than firing. Used inside a rich-text run's own
+ *  text elements — see `renderRichText` in `./rich-text.js` — and for plain-text fields
+ *  elsewhere (`cf-modals.ts`, `cf-blocks.ts`). */
 export function escapeMrkdwn(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+/** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
+ *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
+ *  time — so it's spliced in as-is rather than re-escaped here. */
 function skipLine(skip: Skip): string {
-  const reason = skip.reason ? ` - ${escapeMrkdwn(skip.reason)}` : "";
+  const reason = skip.reason ? ` - ${skip.reason}` : "";
   return `• ${mention(skip.userId)}${reason}`;
 }
 

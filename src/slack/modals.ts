@@ -6,6 +6,7 @@ import { fail, ok, type Parsed } from "../domain/result.js";
 import { sameRoster } from "../domain/rotation.js";
 import { cadenceFitsDays, leadFitsBeforeMidnight } from "../domain/schedule.js";
 import type { Host, Reminder, Skip } from "../domain/types.js";
+import { parseReasonRichText, renderRichText } from "./rich-text.js";
 
 export const REMINDER_FORM = "remind_form";
 
@@ -386,8 +387,9 @@ export interface SkipSource {
   messageTs: string;
 }
 
-/** Slack enforces this client-side, which is why nothing re-checks it on submit. */
-const MAX_REASON_LENGTH = 200;
+/** No longer enforced client-side — `rich_text_input` has no `max_length` — so
+ *  this is re-checked on submit; see the SKIP_FORM handler in listeners/skip.ts. */
+export const MAX_REASON_LENGTH = 200;
 
 /**
  * One shared post means a button cannot hide for just the person who clicked, so
@@ -407,14 +409,16 @@ export function skipModal(source: SkipSource, existing?: Skip): View {
         block_id: "reason",
         optional: true,
         label: { type: "plain_text", text: "Reason" },
-        hint: { type: "plain_text", text: "Optional, and shown on the reminder itself." },
+        hint: {
+          type: "plain_text",
+          text: "Optional, shown on the reminder itself. Keep it under 200 characters.",
+        },
         element: {
-          type: "plain_text_input",
+          type: "rich_text_input",
           action_id: "value",
-          max_length: MAX_REASON_LENGTH,
           placeholder: { type: "plain_text", text: "sick, back tomorrow" },
           // Slack rejects an empty initial_value, so no reason means no key at all.
-          ...(existing?.reason ? { initial_value: existing.reason } : {}),
+          ...(existing?.reason ? { initial_value: parseReasonRichText(existing.reason) } : {}),
         },
       },
     ],
@@ -423,5 +427,6 @@ export function skipModal(source: SkipSource, existing?: Skip): View {
 
 /** Undefined for a box left empty, which is a valid submission. */
 export function readSkipReason(values: Values): string | undefined {
-  return values.reason?.value?.value?.trim() || undefined;
+  const richText = values.reason?.value?.rich_text_value;
+  return richText ? renderRichText(richText).trim() || undefined : undefined;
 }
