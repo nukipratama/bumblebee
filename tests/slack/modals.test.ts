@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { RichTextBlock, RichTextElement } from "@slack/types";
 import type { InputBlock, ModalView } from "@slack/web-api";
 import type { Host, Reminder, Skip } from "../../src/domain/types.js";
 import {
@@ -357,6 +358,11 @@ describe("plannedEdit", () => {
   });
 });
 
+const richText = (elements: RichTextElement[]): RichTextBlock => ({
+  type: "rich_text",
+  elements: [{ type: "rich_text_section", elements }],
+});
+
 describe("skipModal", () => {
   const source = { channelId: "C1", messageTs: "1700000000.0001" };
 
@@ -374,20 +380,35 @@ describe("skipModal", () => {
     assert.equal(reasonInput().optional, true);
   });
 
-  it("caps the reason in the browser, so nothing has to re-check it on submit", () => {
+  it("uses a rich-text field, so a typed @mention can actually notify someone", () => {
     const { element } = reasonInput();
-    assert.ok(element.type === "plain_text_input" && element.max_length === 200);
+    assert.equal(element.type, "rich_text_input");
+    assert.ok(!("max_length" in element), "rich_text_input has no client-side cap");
   });
 
   it("omits initial_value entirely when there is no reason, which Slack requires", () => {
     const { element } = reasonInput();
-    assert.ok(element.type === "plain_text_input");
+    assert.ok(element.type === "rich_text_input");
     assert.ok(!("initial_value" in element));
   });
 
-  it("prefills an existing reason so it can be corrected", () => {
+  it("prefills an existing plain reason so it can be corrected", () => {
     const { element } = reasonInput({ userId: "U_B", reason: "sick" });
-    assert.ok(element.type === "plain_text_input" && element.initial_value === "sick");
+    assert.ok(element.type === "rich_text_input");
+    assert.deepEqual(element.initial_value, richText([{ type: "text", text: "sick" }]));
+  });
+
+  it("prefills a stored mention as a live chip, not raw <@id> text", () => {
+    const { element } = reasonInput({ userId: "U_B", reason: "ask <@U_NUKI> first" });
+    assert.ok(element.type === "rich_text_input");
+    assert.deepEqual(
+      element.initial_value,
+      richText([
+        { type: "text", text: "ask " },
+        { type: "user", user_id: "U_NUKI" },
+        { type: "text", text: " first" },
+      ]),
+    );
   });
 
   it("is where someone learns they already skipped, since the button cannot say so", () => {
@@ -402,14 +423,30 @@ describe("skipModal", () => {
 });
 
 describe("readSkipReason", () => {
+  const richTextValues = (block: RichTextBlock | undefined) =>
+    ({
+      reason: { value: { type: "rich_text_input", rich_text_value: block } },
+    }) as Parameters<typeof readSkipReason>[0];
+
   it("reads and trims what was typed", () => {
-    assert.equal(readSkipReason(values({ reason: { value: "  sick " } })), "sick");
+    assert.equal(
+      readSkipReason(richTextValues(richText([{ type: "text", text: "  sick " }]))),
+      "sick",
+    );
+  });
+
+  it("renders a real mention typed inline", () => {
+    const block = richText([
+      { type: "text", text: "ask " },
+      { type: "user", user_id: "U_NUKI" },
+      { type: "text", text: " first" },
+    ]);
+    assert.equal(readSkipReason(richTextValues(block)), "ask <@U_NUKI> first");
   });
 
   it("reads a blank box as no reason at all", () => {
-    for (const state of [{ value: "" }, { value: "   " }, { value: null }]) {
-      assert.equal(readSkipReason(values({ reason: state })), undefined);
-    }
+    assert.equal(readSkipReason(richTextValues(richText([]))), undefined);
+    assert.equal(readSkipReason(richTextValues(undefined)), undefined);
     assert.equal(readSkipReason(values({})), undefined);
   });
 });

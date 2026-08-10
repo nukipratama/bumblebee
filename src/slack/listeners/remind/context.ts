@@ -1,3 +1,4 @@
+import type { Logger } from "@slack/bolt";
 import type { KnownBlock, WebClient } from "@slack/web-api";
 import { fail, ok, type Parsed } from "../../../domain/result.js";
 import type { Reminder } from "../../../domain/types.js";
@@ -8,6 +9,7 @@ export interface CommandContext {
   channelId: string;
   userId: string;
   client: WebClient;
+  logger: Logger;
   /** `text` is the notification fallback whenever blocks are supplied. */
   respond: (text: string, blocks?: KnownBlock[]) => Promise<unknown>;
   ask: (summary: string, action: PendingAction) => Promise<void>;

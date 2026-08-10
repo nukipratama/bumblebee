@@ -91,9 +91,9 @@ describe("reminderBlocks — host and skips", () => {
     assert.equal(text, "🙅 Skip:\n• <@U_BOB> - dentist\n• <@U_DANA>");
   });
 
-  it("escapes a reason, so `<!channel>` in one cannot ping the channel on every repost", () => {
+  it("passes an already-rendered reason through verbatim, trusting renderRichText's escaping", () => {
     const text = hostContext(
-      reminderBlocks(post({ skips: [skip("U_BOB", "ask <!channel> & co")] })),
+      reminderBlocks(post({ skips: [skip("U_BOB", "ask &lt;!channel&gt; &amp; co")] })),
     );
     assert.equal(text, "🙅 Skip:\n• <@U_BOB> - ask &lt;!channel&gt; &amp; co");
   });

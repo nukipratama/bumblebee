@@ -318,7 +318,7 @@ describe("the reason", () => {
     assert.deepEqual(skipIds(fire.id), ["U_B"]);
   });
 
-  it("is stored exactly as typed, with escaping left to the block that renders it", () => {
+  it("is stored exactly as given, with escaping already done upstream by renderRichText", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
     applySkip({ fire, reminder, clicker: "U_B", reason: "<!channel> & co", now: MEETING });

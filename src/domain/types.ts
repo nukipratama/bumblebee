@@ -62,6 +62,7 @@ export interface Fire {
 
 export interface Skip {
   userId: string;
+  /** Already mrkdwn-ready — see `renderRichText` in `slack/rich-text.ts`. */
   reason: string | null;
 }
 

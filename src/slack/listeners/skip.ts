@@ -14,8 +14,8 @@ import {
   setFireHost,
   setLap,
 } from "../../store/reminders.js";
-import { escapeMrkdwn, SKIP_ACTION } from "../blocks.js";
-import { SKIP_FORM, type SkipSource, readSkipReason, skipModal } from "../modals.js";
+import { SKIP_ACTION } from "../blocks.js";
+import { MAX_REASON_LENGTH, SKIP_FORM, type SkipSource, readSkipReason, skipModal } from "../modals.js";
 
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
 
@@ -80,9 +80,13 @@ function handOver(
   };
 }
 
-/** Mirrors `skipLine()`'s reason formatting so the thread notice reads consistently. */
+/**
+ * Mirrors `skipLine()`'s reason formatting so the thread notice reads consistently.
+ * `reason` is already mrkdwn-ready (escaped text plus real mentions) by the time it
+ * gets here — see `renderRichText` in `../rich-text.js` — so it's spliced in as-is.
+ */
 function skipNotice(reminder: Reminder, clicker: string, reason: string | null): string {
-  const suffix = reason ? ` - ${escapeMrkdwn(reason)}` : "";
+  const suffix = reason ? ` - ${reason}` : "";
   return `🙅 <@${clicker}> is skipping \`${reminder.code}\`${suffix}`;
 }
 
@@ -146,6 +150,14 @@ export function registerSkip(app: App): void {
     const source = JSON.parse(view.private_metadata) as SkipSource;
     const clicker = body.user.id;
     const reason = readSkipReason(view.state.values);
+
+    if (reason && reason.length > MAX_REASON_LENGTH) {
+      await ack({
+        response_action: "errors",
+        errors: { reason: `Keep it under ${MAX_REASON_LENGTH} characters — this one is ${reason.length}.` },
+      });
+      return;
+    }
 
     const fire = getFireByMessageTs(source.messageTs);
     const reminder = fire && getReminderById(fire.reminderId);

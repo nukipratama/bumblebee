@@ -40,6 +40,7 @@ export async function handleShow(ctx: CommandContext, rest: string): Promise<voi
   const rotation = formatRotation(roster, lastHostedOn(reminder.id));
   const names = await resolveDisplayNames(
     ctx.client,
+    ctx.logger,
     roster.map((member) => member.userId),
   );
   const hostOptions = roster.map((member) => ({

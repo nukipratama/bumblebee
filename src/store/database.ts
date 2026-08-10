@@ -197,6 +197,14 @@ const migrations: string[] = [
   // Posting/display order, set from each repo's line number in the settings
   // form. Existing rows default to 0 (tie, falls back to name) until the next Save.
   `ALTER TABLE cf_repos ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+  // Escaping moved from render time to submission time (renderRichText in
+  // slack/rich-text.ts) — skipLine/skipNotice now splice `reason` in unescaped,
+  // trusting it's already safe. Re-escape rows written under the old scheme so
+  // a legacy `<!channel>`-lookalike reason can't turn into a live ping on the
+  // next repost.
+  `UPDATE reminder_skips
+     SET reason = REPLACE(REPLACE(REPLACE(reason, '&', '&amp;'), '<', '&lt;'), '>', '&gt;')
+     WHERE reason IS NOT NULL`,
 ];
 
 export function initDb(): void {
