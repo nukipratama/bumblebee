@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { KnownBlock } from "@slack/web-api";
 import {
-  CF_STATUS_MODAL_CANCEL_ACTION,
   CF_STATUS_MODAL_SET_ACTION_PATTERN,
   MENTION_GROUPS_ACTION_ID,
   MENTION_GROUPS_BLOCK_ID,
@@ -167,19 +166,15 @@ describe("cfStatusModal", () => {
     assert.equal((intro.text as { text: string }).text, "mamikos-web");
   });
 
-  it("renders exactly 3 buttons in order Cancel | No MR | All Merged, styled gray/danger/primary", () => {
+  it("renders exactly 2 buttons in order No MR | All Merged, styled danger/primary", () => {
     const view = cfStatusModal("Core BE", { repoName: "mamikos-web" }, meta);
     assert.ok(view.type === "modal");
     const actions = (view.blocks as KnownBlock[]).find((block) => block.type === "actions");
     assert.ok(actions && actions.type === "actions");
-    assert.equal(actions.elements.length, 3);
+    assert.equal(actions.elements.length, 2);
 
-    const [cancel, noMr, allMerged] = actions.elements;
-    assert.ok(cancel?.type === "button" && noMr?.type === "button" && allMerged?.type === "button");
-
-    assert.equal(cancel.action_id, CF_STATUS_MODAL_CANCEL_ACTION);
-    assert.equal(cancel.text.text, "Cancel");
-    assert.equal(cancel.style, undefined);
+    const [noMr, allMerged] = actions.elements;
+    assert.ok(noMr?.type === "button" && allMerged?.type === "button");
 
     assert.equal(noMr.text.text, "No MR");
     assert.equal(noMr.value, "no_mr");

@@ -12,7 +12,6 @@ import {
 } from "../../../store/cf.js";
 import { CF_STATUS_OPEN_ACTION_PATTERN, cfFallbackText, cfRepoBlocks } from "../../cf-blocks.js";
 import {
-  CF_STATUS_MODAL_CANCEL_ACTION,
   CF_STATUS_MODAL_SET_ACTION_PATTERN,
   cfStatusModal,
   cfStatusResolvedModal,
@@ -22,7 +21,6 @@ import { formatDate } from "../../text.js";
 
 const MESSAGE_GONE =
   "I can't find the Code Freeze round this belongs to — it may be from an older round.";
-const NO_CHANGES_TEXT = "No changes made. You can close this window.";
 
 function recordedText(squad: Squad, status: CfStatus): string {
   return `✅ Set *${squad}* → *${statusLabel(status)}*. You can close this window.`;
@@ -82,22 +80,6 @@ export function registerCfStatus(app: App): void {
       });
     } catch (error) {
       logger.error("opening Code Freeze status form failed", error);
-    }
-  });
-
-  app.action<BlockAction<ButtonAction>>(CF_STATUS_MODAL_CANCEL_ACTION, async ({ ack, body, client, logger }) => {
-    await ack();
-    if (!body.view) return;
-
-    const { squad } = JSON.parse(body.view.private_metadata) as CfStatusModalMetadata;
-
-    try {
-      await client.views.update({
-        view_id: body.view.id,
-        view: cfStatusResolvedModal(squad, NO_CHANGES_TEXT),
-      });
-    } catch (error) {
-      logger.error("closing the Code Freeze status form failed", error);
     }
   });
 
