@@ -15,7 +15,6 @@ import { dayOption } from "./modals.js";
 
 export const CF_SETTINGS_FORM = "cf_settings_form";
 
-export const CF_STATUS_MODAL_CANCEL_ACTION = "cf_status_modal_cancel";
 export const CF_STATUS_MODAL_SET_ACTION = "cf_status_modal_set";
 export const CF_STATUS_MODAL_SET_ACTION_PATTERN = new RegExp(`^${CF_STATUS_MODAL_SET_ACTION}_`);
 
@@ -51,11 +50,6 @@ export function cfStatusModal(
         elements: [
           {
             type: "button",
-            action_id: CF_STATUS_MODAL_CANCEL_ACTION,
-            text: { type: "plain_text", text: "Cancel" },
-          },
-          {
-            type: "button",
             action_id: modalSetActionId("no_mr"),
             style: "danger",
             text: { type: "plain_text", text: "No MR" },
@@ -74,7 +68,7 @@ export function cfStatusModal(
   };
 }
 
-/** Swapped in via `views.update` after Cancel/No MR/All Merged — a modal can't be force-closed from a block action. */
+/** Swapped in via `views.update` after No MR/All Merged — a modal can't be force-closed from a block action. */
 export function cfStatusResolvedModal(squad: Squad, message: string): View {
   return {
     type: "modal",
