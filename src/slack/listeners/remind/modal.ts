@@ -2,6 +2,7 @@ import type { App, BlockAction, ButtonAction } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { planLap } from "../../../domain/rotation.js";
 import type { Reminder } from "../../../domain/types.js";
+import { transaction } from "../../../store/database.js";
 import {
   getReminder,
   insertReminder,
@@ -57,17 +58,19 @@ function applyEdit(
   const roster = listHosts(existing.id);
   const planned = plannedEdit(existing, roster, fields, at, days, leadMinutes);
 
-  if (planned.at !== undefined) setReminderAt(channelId, code, planned.at);
-  if (planned.days !== undefined) setReminderDays(channelId, code, planned.days);
-  if (planned.everyNWeeks !== undefined) setReminderCadence(channelId, code, planned.everyNWeeks);
-  if (planned.message !== undefined) setReminderMessage(channelId, code, planned.message);
-  if (planned.leadMinutes !== undefined) {
-    setReminderLeadMinutes(channelId, code, planned.leadMinutes);
-  }
-  if (planned.preMessage !== undefined) setReminderPreMessage(channelId, code, planned.preMessage);
-  if (planned.hosts !== undefined) {
-    replaceHosts(existing.id, planned.hosts, planLap(roster, planned.hosts));
-  }
+  transaction(() => {
+    if (planned.at !== undefined) setReminderAt(channelId, code, planned.at);
+    if (planned.days !== undefined) setReminderDays(channelId, code, planned.days);
+    if (planned.everyNWeeks !== undefined) setReminderCadence(channelId, code, planned.everyNWeeks);
+    if (planned.message !== undefined) setReminderMessage(channelId, code, planned.message);
+    if (planned.leadMinutes !== undefined) {
+      setReminderLeadMinutes(channelId, code, planned.leadMinutes);
+    }
+    if (planned.preMessage !== undefined) setReminderPreMessage(channelId, code, planned.preMessage);
+    if (planned.hosts !== undefined) {
+      replaceHosts(existing.id, planned.hosts, planLap(roster, planned.hosts));
+    }
+  });
 }
 
 export function registerReminderForm(app: App): void {

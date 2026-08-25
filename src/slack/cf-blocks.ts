@@ -152,15 +152,20 @@ export function cfSettingsBlocks(summary: CfSettingsSummary): KnownBlock[] {
   ];
 }
 
+function backtickName(name: string): string {
+  const escaped = escapeMrkdwn(name);
+  return `\`${escaped}\``;
+}
+
 function diffRepoNames(before: readonly string[], after: readonly string[]): string[] {
   const added = after.filter((name) => !before.includes(name));
   const removed = before.filter((name) => !after.includes(name));
   const parts: string[] = [];
   if (added.length > 0) {
-    parts.push(`added repo${added.length > 1 ? "s" : ""} ${added.map((n) => `\`${n}\``).join(", ")}`);
+    parts.push(`added repo${added.length > 1 ? "s" : ""} ${added.map(backtickName).join(", ")}`);
   }
   if (removed.length > 0) {
-    parts.push(`removed repo${removed.length > 1 ? "s" : ""} ${removed.map((n) => `\`${n}\``).join(", ")}`);
+    parts.push(`removed repo${removed.length > 1 ? "s" : ""} ${removed.map(backtickName).join(", ")}`);
   }
   return parts;
 }

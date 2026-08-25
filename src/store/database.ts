@@ -205,6 +205,12 @@ const migrations: string[] = [
   `UPDATE reminder_skips
      SET reason = REPLACE(REPLACE(REPLACE(reason, '&', '&amp;'), '<', '&lt;'), '>', '&gt;')
      WHERE reason IS NOT NULL`,
+  // These four tables are full-scanned on every button click and every
+  // scheduler tick as they grow — additive, no data touched.
+  `CREATE INDEX idx_reminder_fires_message_ts ON reminder_fires(message_ts)`,
+  `CREATE INDEX idx_reminder_fires_join_message_ts ON reminder_fires(join_message_ts)`,
+  `CREATE INDEX idx_reminder_fires_reminder_fired_on ON reminder_fires(reminder_id, fired_on)`,
+  `CREATE INDEX idx_cf_messages_message_ts ON cf_messages(message_ts)`,
 ];
 
 export function initDb(): void {
@@ -230,7 +236,24 @@ export function stmt(sql: string): StatementSync {
   return statement;
 }
 
+// Nestable: an inner transaction() call joins the outer one instead of issuing
+// its own BEGIN, which SQLite rejects. A failure at any depth rolls back the
+// whole outermost transaction, which is what callers composing several
+// already-transactional store functions into one atomic unit need.
+let transactionDepth = 0;
+
 export function transaction(work: () => void): void {
+  if (transactionDepth > 0) {
+    transactionDepth++;
+    try {
+      work();
+    } finally {
+      transactionDepth--;
+    }
+    return;
+  }
+
+  transactionDepth = 1;
   db.exec("BEGIN");
   try {
     work();
@@ -238,5 +261,7 @@ export function transaction(work: () => void): void {
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
+  } finally {
+    transactionDepth = 0;
   }
 }

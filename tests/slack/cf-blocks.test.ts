@@ -227,6 +227,13 @@ describe("describeCfSettingsChange", () => {
     );
   });
 
+  it("escapes a repo name containing a broadcast token, so it can't fire live", () => {
+    const before: CfSettingsSummary = { ...empty, repos: [] };
+    const after: CfSettingsSummary = { ...empty, repos: [repo("<!channel> pwned")] };
+    const change = describeCfSettingsChange("U1", before, after);
+    assert.match(change ?? "", /added repo `&lt;!channel&gt; pwned`/);
+  });
+
   it("reports multiple removed repos on a full clear", () => {
     const before: CfSettingsSummary = { ...empty, repos: [repo("mamikos-web"), repo("pms")] };
     assert.match(

@@ -54,6 +54,15 @@ export function escapeMrkdwn(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+const BROADCAST_PATTERN = /<!(channel|here|everyone)>/gi;
+
+/** Neutralizes `<!channel>`/`<!here>`/`<!everyone>` in text headed for an `mrkdwn`
+ *  block, so a reminder or repo name can't turn into a live mass-ping. Leaves
+ *  `<@user>`/`<#channel>`/links intact — those are legitimate live mentions. */
+export function neutralizeBroadcasts(text: string): string {
+  return text.replace(BROADCAST_PATTERN, (_, kind: string) => `@${kind}`);
+}
+
 /** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
  *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
  *  time — so it's spliced in as-is rather than re-escaped here. */
@@ -70,7 +79,7 @@ function skipList(skips: readonly Skip[]): string {
 /** Each dialect goes through the block that reads it as written. Never convert. */
 function bodyBlock(post: ReminderPost): KnownBlock {
   return post.bodyFormat === "mrkdwn"
-    ? { type: "section", text: { type: "mrkdwn", text: post.body } }
+    ? { type: "section", text: { type: "mrkdwn", text: neutralizeBroadcasts(post.body) } }
     : { type: "markdown", text: post.body };
 }
 
@@ -269,7 +278,9 @@ const currentHostBlocks = (code: string, options: readonly HostOption[]): KnownB
 ];
 
 export function reminderDetailBlocks(detail: ReminderDetail): KnownBlock[] {
-  const blocks: KnownBlock[] = [{ type: "section", text: { type: "mrkdwn", text: detail.body } }];
+  const blocks: KnownBlock[] = [
+    { type: "section", text: { type: "mrkdwn", text: neutralizeBroadcasts(detail.body) } },
+  ];
   if (!detail.rotation) return blocks;
 
   const hostOptions = detail.hostOptions ?? [];

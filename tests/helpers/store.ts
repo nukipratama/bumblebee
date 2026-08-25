@@ -90,3 +90,17 @@ export function fakeLogger(): Logger {
     setName: noop,
   };
 }
+
+export interface LoggedCall {
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+}
+
+/** A Logger that records what was logged, for asserting on log output. */
+export function recordingLogger(): Logger & { calls: LoggedCall[] } {
+  const calls: LoggedCall[] = [];
+  const record = (level: LoggedCall["level"]) => (message: string) => {
+    calls.push({ level, message });
+  };
+  return { ...fakeLogger(), calls, debug: record("debug"), info: record("info"), warn: record("warn"), error: record("error") };
+}

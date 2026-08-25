@@ -24,7 +24,16 @@ export interface PendingEntry {
 
 const entries = new Map<string, PendingEntry>();
 
+/** Nobody clicking a button leaves its entry to expire quietly — swept here
+ *  instead of on a timer, since a new entry is the only thing that needs one. */
+function sweepExpired(now: number): void {
+  for (const [id, entry] of entries) {
+    if (now - entry.createdAt > TTL_MS) entries.delete(id);
+  }
+}
+
 export function put(entry: Omit<PendingEntry, "createdAt">, now = Date.now()): string {
+  sweepExpired(now);
   const id = randomUUID();
   entries.set(id, { ...entry, createdAt: now });
   return id;
