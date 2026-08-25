@@ -65,6 +65,33 @@ describe("reminderBlocks — body dialect", () => {
   });
 });
 
+describe("reminderBlocks — broadcast neutralization", () => {
+  it("neutralizes <!channel> in an mrkdwn body so it can't fire", () => {
+    const [body] = reminderBlocks(post({ bodyFormat: "mrkdwn", body: "<!channel> heads up" }));
+    assert.deepEqual(body, { type: "section", text: { type: "mrkdwn", text: "@channel heads up" } });
+  });
+
+  it("neutralizes <!here> and <!everyone> too", () => {
+    const [here] = reminderBlocks(post({ bodyFormat: "mrkdwn", body: "<!here>" }));
+    assert.deepEqual(here, { type: "section", text: { type: "mrkdwn", text: "@here" } });
+    const [everyone] = reminderBlocks(post({ bodyFormat: "mrkdwn", body: "<!everyone>" }));
+    assert.deepEqual(everyone, { type: "section", text: { type: "mrkdwn", text: "@everyone" } });
+  });
+
+  it("leaves a real <@user> mention live in an mrkdwn body", () => {
+    const [body] = reminderBlocks(post({ bodyFormat: "mrkdwn", body: "ping <@U_ALICE> please" }));
+    assert.deepEqual(body, {
+      type: "section",
+      text: { type: "mrkdwn", text: "ping <@U_ALICE> please" },
+    });
+  });
+
+  it("does not touch a markdown body — Slack's markdown block type already treats it as literal text", () => {
+    const [body] = reminderBlocks(post({ bodyFormat: "markdown", body: "<!channel>" }));
+    assert.deepEqual(body, { type: "markdown", text: "<!channel>" });
+  });
+});
+
 describe("reminderBlocks — host and skips", () => {
   it("says nothing about hosting when there is neither", () => {
     assert.equal(hostContext(reminderBlocks(post())), undefined);
@@ -241,6 +268,11 @@ describe("reminderDetailBlocks", () => {
   it("has no rotation section at all without a roster", () => {
     const blocks = reminderDetailBlocks({ code: "standup", body: "hi" });
     assert.ok(!blocks.some((block) => block.type === "actions"));
+  });
+
+  it("neutralizes <!channel> in the body unconditionally — this view always renders mrkdwn", () => {
+    const [body] = reminderDetailBlocks({ code: "standup", body: "<!channel> hi" });
+    assert.deepEqual(body, { type: "section", text: { type: "mrkdwn", text: "@channel hi" } });
   });
 
   it("shows the current-host picker once it has fired today, scoped to the roster", () => {

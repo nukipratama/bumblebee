@@ -1,4 +1,4 @@
-import type { SocketModeReceiver } from "@slack/bolt";
+import type { Logger, SocketModeReceiver } from "@slack/bolt";
 
 const ACK_RETRY_DELAY_MS = 250;
 
@@ -13,13 +13,16 @@ type SendFn = (id: string, body?: unknown) => Promise<void>;
 export async function withOneRetry<T>(
   attempt: () => Promise<T>,
   delayMs = ACK_RETRY_DELAY_MS,
+  onRetrySuccess?: () => void,
 ): Promise<T> {
   try {
     return await attempt();
   } catch {
     await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
     try {
-      return await attempt();
+      const result = await attempt();
+      onRetrySuccess?.();
+      return result;
     } catch (error) {
       (error as { ackRetryExhausted?: boolean }).ackRetryExhausted = true;
       throw error;
@@ -35,15 +38,20 @@ export async function withOneRetry<T>(
  * client instance directly. `send` is typed private upstream; guarded in case
  * a future library version changes its shape.
  */
-export function patchAckRetry(receiver: SocketModeReceiver): void {
+export function patchAckRetry(receiver: SocketModeReceiver, logger: Logger): void {
   const client = receiver.client as unknown as { send: SendFn };
   if (typeof client.send !== "function") {
-    console.warn(
+    logger.warn(
       "patchAckRetry: SocketModeClient.send is not a function — ack retry is disabled. " +
         "Check whether @slack/socket-mode changed its internals.",
     );
     return;
   }
   const originalSend = client.send.bind(client);
-  client.send = (id, body) => withOneRetry(() => originalSend(id, body));
+  client.send = (id, body) =>
+    withOneRetry(
+      () => originalSend(id, body),
+      ACK_RETRY_DELAY_MS,
+      () => logger.info("ack retry succeeded after a socket reconnect race"),
+    );
 }

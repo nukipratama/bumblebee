@@ -4,6 +4,7 @@ import { hostChangeOpen } from "../../domain/handover.js";
 import { drawLapAvoiding, pendingLap } from "../../domain/rotation.js";
 import type { Fire, Reminder } from "../../domain/types.js";
 import { repost } from "../repost.js";
+import { transaction } from "../../store/database.js";
 import {
   addSkip,
   getFireByMessageTs,
@@ -61,12 +62,14 @@ function handOver(
   // The clicker rejoins at the back, which is what keeps their turn. Anyone
   // passed over keeps their place — skipping costs nobody a turn.
   const remaining = next.filter((userId) => userId !== clicker && userId !== replacement);
-  setLap(reminder.id, [...remaining, clicker]);
-  // They clicked Skip me, so they are skipping as well as not hosting.
-  addSkip(fire.id, clicker, reason);
+  transaction(() => {
+    setLap(reminder.id, [...remaining, clicker]);
+    // They clicked Skip me, so they are skipping as well as not hosting.
+    addSkip(fire.id, clicker, reason);
+    setFireHost(fire.id, replacement ?? null);
+  });
 
   if (!replacement) {
-    setFireHost(fire.id, null);
     return {
       announce:
         `⚠️ Everyone left in the rotation has skipped, so nobody is hosting` +
@@ -74,7 +77,6 @@ function handOver(
     };
   }
 
-  setFireHost(fire.id, replacement);
   return {
     announce: `🔁 <@${replacement}> is hosting instead — <@${clicker}> keeps their turn.`,
   };
@@ -178,8 +180,18 @@ export function registerSkip(app: App): void {
 
     await ack();
 
-    const outcome = applySkip({ fire, reminder, clicker, reason, now });
-    await settle(client, outcome, fire, reminder, clicker, source, logger);
+    // Re-read rather than reuse the pre-ack `fire`/`reminder`: ack() is a real
+    // network round-trip, and a concurrent handover in that window would make
+    // applySkip's handover-vs-plain-skip decision on stale data otherwise.
+    const current = getFireByMessageTs(source.messageTs);
+    const currentReminder = current && getReminderById(current.reminderId);
+    if (!current || !currentReminder) {
+      logger.error(`skip form submitted for a fire that vanished before it could be applied: ${source.messageTs}`);
+      return;
+    }
+
+    const outcome = applySkip({ fire: current, reminder: currentReminder, clicker, reason, now });
+    await settle(client, outcome, current, currentReminder, clicker, source, logger);
   });
 }
 

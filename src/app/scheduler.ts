@@ -19,7 +19,7 @@ export function getLastTickAt(): Date | undefined {
   return lastTickAt;
 }
 
-function assertJakarta(logger: Logger): void {
+export function assertJakarta(logger: Logger): void {
   const offsetMinutes = -new Date().getTimezoneOffset();
   if (offsetMinutes === JAKARTA_UTC_OFFSET_MINUTES) return;
 
@@ -37,22 +37,24 @@ const postHeadsUp: DuePost = (reminder, client) => fireReminder(reminder, client
 const postMeeting: DuePost = (reminder, client) => fireReminder(reminder, client, "meeting");
 
 /** The lead time fires; `at` joins that fire, or fires outright with no lead set. */
-function duePost(reminder: Reminder, now: WallClock): DuePost | undefined {
+export function duePost(reminder: Reminder, now: WallClock): DuePost | undefined {
   if (matchesLead(reminder, now)) return postHeadsUp;
   if (!matches(reminder, now)) return undefined;
 
   return reminder.leadMinutes > 0 ? postJoin : postMeeting;
 }
 
-async function runCfTick(app: App, wallClock: WallClock): Promise<void> {
+export async function runCfTick(app: App, wallClock: WallClock): Promise<void> {
   for (const schedule of listSchedules()) {
     if (!matches(schedule, wallClock)) continue;
 
     try {
-      const result = await startCfRound(app.client, "scheduler", schedule.channelId);
+      const result = await startCfRound(app.client, "scheduler", schedule.channelId, app.logger);
       setScheduleLastFiredDate(schedule.channelId, wallClock.date);
+      const failedNote =
+        result.failedRepos.length > 0 ? `, failed for ${result.failedRepos.join(", ")}` : "";
       app.logger.info(
-        `fired Code Freeze round -> ${schedule.channelId} (${result.repoCount} repos)`,
+        `fired Code Freeze round -> ${schedule.channelId} (${result.repoCount} repos${failedNote})`,
       );
     } catch (error) {
       app.logger.error(`Code Freeze scheduled round failed for ${schedule.channelId}`, error);
@@ -60,7 +62,7 @@ async function runCfTick(app: App, wallClock: WallClock): Promise<void> {
   }
 }
 
-async function runTick(app: App): Promise<void> {
+export async function runTick(app: App): Promise<void> {
   const now = new Date();
   const wallClock = localParts(now);
   lastTickAt = now;
@@ -85,11 +87,18 @@ async function runTick(app: App): Promise<void> {
   await runCfTick(app, wallClock);
 }
 
-export function startScheduler(app: App): void {
+export interface Scheduler {
+  /** Stops arming further ticks and waits for one already in flight to finish. */
+  stop: () => Promise<void>;
+}
+
+export function startScheduler(app: App): Scheduler {
   assertJakarta(app.logger);
 
   let inTick = false;
   let lastStamp = "";
+  let stopped = false;
+  let currentTick: Promise<void> = Promise.resolve();
 
   const tick = async (): Promise<void> => {
     const { date, time } = localParts(new Date());
@@ -108,10 +117,20 @@ export function startScheduler(app: App): void {
   };
 
   const scheduleNextTick = (): void => {
+    if (stopped) return;
     setTimeout(() => {
-      void tick().finally(scheduleNextTick);
+      if (stopped) return;
+      currentTick = tick();
+      void currentTick.finally(scheduleNextTick);
     }, JUST_AFTER_THE_MINUTE_MS - (Date.now() % MS_PER_MINUTE));
   };
 
   scheduleNextTick();
+
+  return {
+    stop: async () => {
+      stopped = true;
+      await currentTick;
+    },
+  };
 }
