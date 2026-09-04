@@ -131,9 +131,8 @@ tests/                          # mirrors the src/ path of what it covers
   editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
   Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.
 - **Only write a field the form actually changed** — `plannedEdit` in `slack/modals.ts` decides, and
-  the listener just executes it. Two writes are not idempotent: `setReminderMessage` resets
-  `body_format` to `markdown`, silently reinterpreting a body captured from Slack, and `replaceHosts`
-  re-plans the lap, redrawing an order people have already read off `show`.
+  the listener just executes it. `replaceHosts` is the reason: it re-plans the lap, redrawing an
+  order people have already read off `show`.
 - **The Skip me button cannot hide or relabel per-person, and that is not a bug.** A fired reminder is
   one shared channel message, so `chat.update` rewrites it for everyone and Slack has no per-viewer
   rendering. Anything the button said after a click would be said to the whole channel, and hiding it
@@ -155,10 +154,17 @@ tests/                          # mirrors the src/ path of what it covers
 - Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
   `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
-- **A reminder's message has a dialect.** `reminders.body_format` is `markdown` for anything typed into
-  `/bee-remind` and `mrkdwn` for anything captured from a Slack message. `slack/blocks.ts` renders
-  each through the block that reads it as written — `*word*` is italic in one and bold in the other, so
-  converting between them silently changes people's text. Never convert; carry the format.
+- **A reminder's message has a dialect.** `reminders.body_format` is `mrkdwn` for everything written
+  now — the form's body boxes are `rich_text_input`, and `renderRichText` flattens what they submit
+  into mrkdwn — but `markdown` rows from before that still exist. `slack/blocks.ts` renders each
+  through the block that reads it as written; `*word*` is italic in one and bold in the other, so
+  converting silently changes people's text. Never convert; carry the format.
+- **`parseRichText`/`renderRichText` are a round trip, and have to stay one.** Opening the edit form
+  parses a stored body into rich text and submitting re-renders it, so anything `parseRichText` does
+  not recognize gets escaped into literal text — a captured `<#C1|general>` would become
+  `&lt;#C1…`, rewriting a live reminder nobody meant to touch. Add a parse arm for every entity
+  `renderRichText` can emit; `tests/slack/rich-text.test.ts` pins the shapes real stored bodies come
+  in. Styling is the accepted exception: `*bold*` reopens as its literal markers.
 
 ## Config & secrets
 

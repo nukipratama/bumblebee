@@ -83,11 +83,13 @@ describe("reminders", () => {
     );
   });
 
-  it("resets body_format when the message is edited, since `edit` supplies Markdown", () => {
-    seed({ bodyFormat: "mrkdwn" });
-    setReminderMessage("C1", "standup", "new text");
+  it("stores the dialect the new message was written in, alongside the text", () => {
+    seed({ bodyFormat: "markdown" });
+    setReminderMessage("C1", "standup", "ping <@U_A>", "mrkdwn");
 
-    assert.equal(getReminder("C1", "standup")?.bodyFormat, "markdown");
+    const stored = getReminder("C1", "standup");
+    assert.equal(stored?.message, "ping <@U_A>");
+    assert.equal(stored?.bodyFormat, "mrkdwn");
   });
 
   it("cascades hosts and fires when a reminder is removed", () => {

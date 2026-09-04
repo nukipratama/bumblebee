@@ -222,8 +222,8 @@ describe("fireReminder — the heads-up body", () => {
     await fireReminder(reminder, client, "heads-up");
 
     assert.deepEqual(posted[0]!.blocks?.[0], {
-      type: "markdown",
-      text: "Heads Up at 10:25: Daily Standup",
+      type: "section",
+      text: { type: "mrkdwn", text: "Heads Up at 10:25: Daily Standup" },
     });
   });
 
@@ -234,6 +234,30 @@ describe("fireReminder — the heads-up body", () => {
     await fireReminder(reminder, client, "meeting");
 
     assert.deepEqual(posted[0]!.blocks?.[0], { type: "markdown", text: "Standup time!" });
+  });
+
+  it("lets a mention typed into the heads-up ping for real", async () => {
+    const reminder = seed({ ...lead, preMessage: "<@U_A> is up" });
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "heads-up");
+
+    assert.deepEqual(posted[0]!.blocks?.[0], {
+      type: "section",
+      text: { type: "mrkdwn", text: "Heads Up at 10:25: <@U_A> is up" },
+    });
+  });
+
+  it("still cannot mass-ping from a heads-up, now that it renders as mrkdwn", async () => {
+    const reminder = seed({ ...lead, preMessage: "<!channel> standup" });
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "heads-up");
+
+    assert.deepEqual(posted[0]!.blocks?.[0], {
+      type: "section",
+      text: { type: "mrkdwn", text: "Heads Up at 10:25: @channel standup" },
+    });
   });
 
   it("falls back to the meeting body rather than posting a bare prefix", async () => {

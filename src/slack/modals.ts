@@ -6,7 +6,7 @@ import { fail, ok, type Parsed } from "../domain/result.js";
 import { sameRoster } from "../domain/rotation.js";
 import { cadenceFitsDays, leadFitsBeforeMidnight } from "../domain/schedule.js";
 import type { Host, Reminder, Skip } from "../domain/types.js";
-import { parseReasonRichText, renderRichText } from "./rich-text.js";
+import { parseRichText, renderRichText } from "./rich-text.js";
 
 export const REMINDER_FORM = "remind_form";
 
@@ -82,26 +82,19 @@ const codeDisplay = (code: string): KnownBlock => ({
 });
 
 function messageInput(reminder?: Reminder): KnownBlock {
-  const capturedFromMessage = reminder?.bodyFormat === "mrkdwn";
   return {
     type: "input",
     block_id: "message",
     label: { type: "plain_text", text: "Message" },
     hint: {
       type: "plain_text",
-      // Retyping a captured body makes it Markdown, where `*word*` is italic
-      // rather than bold. Leaving it untouched keeps it as it was written.
-      // A modal returns plain text, so "@someone" typed here stays literal —
-      // unlike the slash command, where Slack escaped it into a real mention.
-      text: capturedFromMessage
-        ? "Captured from a Slack message. Change the text and it is saved as Markdown."
-        : "Posted as written. Typed @names are plain text, not mentions.",
+      text: "Posted as written. Type @ to mention a person or group.",
     },
     element: {
-      type: "plain_text_input",
+      type: "rich_text_input",
       action_id: "value",
-      multiline: true,
-      ...(reminder ? { initial_value: reminder.message } : {}),
+      // Slack rejects an empty initial_value, so a new reminder sends no key at all.
+      ...(reminder?.message ? { initial_value: parseRichText(reminder.message) } : {}),
     },
   };
 }
@@ -155,10 +148,9 @@ function scheduleInputs(reminder?: Reminder, roster: readonly Host[] = []): Know
         text: "What the early post says. Required once a heads-up is set.",
       },
       element: {
-        type: "plain_text_input",
+        type: "rich_text_input",
         action_id: "value",
-        multiline: true,
-        ...(reminder?.preMessage ? { initial_value: reminder.preMessage } : {}),
+        ...(reminder?.preMessage ? { initial_value: parseRichText(reminder.preMessage) } : {}),
       },
     },
     {
@@ -257,13 +249,18 @@ export function readSubmission(values: Values): FormFields {
     const value = field(block)?.value;
     return value === undefined || value === null ? undefined : value.trim();
   };
+  /** Undefined for a block this mode did not render, never for an empty box. */
+  const body = (block: string): string | undefined => {
+    const richText = field(block)?.rich_text_value;
+    return richText ? renderRichText(richText).trim() : undefined;
+  };
 
   return {
     code: text("code"),
-    message: text("message"),
+    message: body("message"),
     at: text("at") ?? "",
     lead: text("lead"),
-    preMessage: text("preMessage"),
+    preMessage: body("preMessage"),
     dayNames: (field("days")?.selected_options ?? []).map((option) => option.value),
     everyNWeeks: Number(field("cadence")?.selected_option?.value ?? 1),
     hosts: field("hosts")?.selected_users ?? [],
@@ -282,10 +279,9 @@ export interface PlannedEdit {
 }
 
 /**
- * Writing a field that did not change is not a no-op here — `setReminderMessage`
- * also resets the body format to Markdown, which would silently reinterpret a
- * body captured from a Slack message, and re-planning the lap redraws an order
- * people have already read off `show`. So each write has to be earned.
+ * Writing a field that did not change is not a no-op here — `replaceHosts`
+ * re-plans the lap, redrawing an order people have already read off `show`.
+ * So each write has to be earned.
  */
 export function plannedEdit(
   existing: Reminder,
@@ -300,13 +296,23 @@ export function plannedEdit(
   if (at !== existing.at) planned.at = at;
   if (days !== existing.days) planned.days = days;
   if (fields.everyNWeeks !== existing.everyNWeeks) planned.everyNWeeks = fields.everyNWeeks;
-  if (fields.message !== undefined && fields.message !== existing.message) {
+
+  // Compared against what the box would submit back untouched, not the raw
+  // stored string: the parse/render pair isn't lossless for every entity (a
+  // captured `<!channel>` reopens live but renders back inert), so comparing
+  // against the raw value would treat a same-form-submit as a real edit and
+  // permanently defuse it.
+  const roundTripped = (body: string): string => renderRichText(parseRichText(body));
+  if (fields.message !== undefined && fields.message !== roundTripped(existing.message)) {
     planned.message = fields.message;
   }
   if (leadMinutes !== existing.leadMinutes) planned.leadMinutes = leadMinutes;
 
-  const preMessage = fields.preMessage ?? null;
-  if (preMessage !== existing.preMessage) planned.preMessage = preMessage;
+  // An emptied box and a never-set one both mean no heads-up, and the column
+  // holds both "" and NULL — normalize before comparing or every edit rewrites it.
+  const preMessage = fields.preMessage || null;
+  const existingPreMessage = existing.preMessage ? roundTripped(existing.preMessage) : null;
+  if (preMessage !== existingPreMessage) planned.preMessage = preMessage;
 
   if (!sameRoster(roster, fields.hosts)) planned.hosts = fields.hosts;
 
@@ -418,7 +424,7 @@ export function skipModal(source: SkipSource, existing?: Skip): View {
           action_id: "value",
           placeholder: { type: "plain_text", text: "sick, back tomorrow" },
           // Slack rejects an empty initial_value, so no reason means no key at all.
-          ...(existing?.reason ? { initial_value: parseReasonRichText(existing.reason) } : {}),
+          ...(existing?.reason ? { initial_value: parseRichText(existing.reason) } : {}),
         },
       },
     ],
