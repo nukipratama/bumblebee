@@ -62,7 +62,9 @@ function applyEdit(
     if (planned.at !== undefined) setReminderAt(channelId, code, planned.at);
     if (planned.days !== undefined) setReminderDays(channelId, code, planned.days);
     if (planned.everyNWeeks !== undefined) setReminderCadence(channelId, code, planned.everyNWeeks);
-    if (planned.message !== undefined) setReminderMessage(channelId, code, planned.message);
+    if (planned.message !== undefined) {
+      setReminderMessage(channelId, code, planned.message, "mrkdwn");
+    }
     if (planned.leadMinutes !== undefined) {
       setReminderLeadMinutes(channelId, code, planned.leadMinutes);
     }
@@ -178,10 +180,12 @@ export function registerReminderForm(app: App): void {
         at: checked.at,
         days: checked.days,
         message: captured ?? fields.message!,
-        bodyFormat: captured ? "mrkdwn" : "markdown",
+        // Both paths are mrkdwn now: a captured message always was, and the form
+        // hands back what `renderRichText` flattened out of the rich-text box.
+        bodyFormat: "mrkdwn",
         everyNWeeks: fields.everyNWeeks,
         leadMinutes: checked.leadMinutes,
-        preMessage: fields.preMessage ?? null,
+        preMessage: fields.preMessage || null,
         createdBy: userId,
       });
 

@@ -88,10 +88,32 @@ describe("readSubmission", () => {
 
   it("tells a block that was never rendered apart from one left blank", () => {
     const absent = readSubmission(values({ at: { value: "09:15" } }));
-    const blank = readSubmission(values({ at: { value: "09:15" }, message: { value: "  " } }));
+    const blank = readSubmission(
+      values({
+        at: { value: "09:15" },
+        message: { rich_text_value: richText([{ type: "text", text: "  " }]) },
+      }),
+    );
 
     assert.equal(absent.message, undefined);
     assert.equal(blank.message, "");
+  });
+
+  it("flattens the body's mentions and styling out of the rich-text box", () => {
+    const read = readSubmission(
+      values({
+        message: {
+          rich_text_value: richText([
+            { type: "text", text: "standup ", style: { bold: true } },
+            { type: "user", user_id: "U_NUKI" },
+          ]),
+        },
+        preMessage: { rich_text_value: richText([{ type: "text", text: "starting soon" }]) },
+      }),
+    );
+
+    assert.equal(read.message, "*standup* <@U_NUKI>");
+    assert.equal(read.preMessage, "starting soon");
   });
 
   it("reads an empty roster, which is how a rotation is cleared", () => {
@@ -219,7 +241,10 @@ describe("reminderModal", () => {
       (byId.get(id) as unknown as { element: Record<string, unknown> }).element;
 
     assert.equal(element("at").initial_value, "16:35");
-    assert.equal(element("message").initial_value, "Standup time!");
+    assert.deepEqual(
+      element("message").initial_value,
+      richText([{ type: "text", text: "Standup time!" }]),
+    );
     assert.deepEqual(element("hosts").initial_users, ["U_A"]);
     assert.deepEqual(
       (element("days").initial_options as { value: string }[]).map((option) => option.value),
@@ -245,7 +270,7 @@ describe("reminderModal", () => {
     assert.equal(days.element.initial_options.length, 7);
   });
 
-  it("warns that retyping a captured body re-saves it as Markdown", () => {
+  it("offers the body and the heads-up as rich text, which is what makes @ pick a person", () => {
     const view = reminderModal({
       kind: "edit",
       source: { kind: "edit", channelId: "C1", code: "standup" },
@@ -253,10 +278,24 @@ describe("reminderModal", () => {
       roster: [],
     });
 
-    const message = view.blocks.find((block) => block.block_id === "message") as {
-      hint: { text: string };
-    };
-    assert.match(message.hint.text, /Markdown/);
+    const element = (id: string) =>
+      (view.blocks.find((block) => block.block_id === id) as unknown as {
+        element: { type: string };
+      }).element;
+
+    assert.equal(element("message").type, "rich_text_input");
+    assert.equal(element("preMessage").type, "rich_text_input");
+  });
+
+  it("sends no initial_value for a body Slack would reject as empty", () => {
+    const view = reminderModal({ kind: "create", source: { kind: "create", channelId: "C1" } });
+
+    for (const id of ["message", "preMessage"]) {
+      const element = (view.blocks.find((block) => block.block_id === id) as unknown as {
+        element: Record<string, unknown>;
+      }).element;
+      assert.ok(!("initial_value" in element), `${id} must omit the key entirely`);
+    }
   });
 });
 

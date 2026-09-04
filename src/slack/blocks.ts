@@ -41,7 +41,7 @@ export function reminderBody(
   if (which === "meeting" || reminder.preMessage === null) {
     return { body: reminder.message, bodyFormat: reminder.bodyFormat };
   }
-  return { body: `Heads Up at ${reminder.at}: ${reminder.preMessage}`, bodyFormat: "markdown" };
+  return { body: `Heads Up at ${reminder.at}: ${reminder.preMessage}`, bodyFormat: "mrkdwn" };
 }
 
 const mention = (userId: string): string => `<@${userId}>`;

@@ -143,10 +143,7 @@ The easiest route, and the only one with a real multi-line message box:
    rotation → **Create**.
 
 No quotes, no escaping. The dialog's **Create** button *is* the confirmation, so there's no second
-Approve step here. It posts back exactly as written: Bumblebee records that the text came from Slack
-and renders it as Slack markup rather than converting it. (`*word*` is bold in a Slack message but
-italic in the Markdown a message typed into the form uses — converting would silently change your
-text.)
+Approve step here. It posts back exactly as written — Slack markup, mentions and all.
 
 ### Managing reminders with `/bee-remind`
 
@@ -170,9 +167,11 @@ cadence are pickers, so there are no flags to remember and no quoting rules to g
   measured in days.
 - **A name can't be changed once set** — it is how the reminder is looked up, so the Edit form shows
   it rather than offering it. Remove and recreate to rename.
-- **The message posts exactly as stored**, apart from the host line a rotation appends. An `@name`
-  typed into the form is plain text; to mention someone for real, write the message in Slack and use
-  **Make this a reminder**, which keeps the mention intact.
+- **The message posts exactly as stored**, apart from the host line a rotation appends. The Message
+  and Heads-up boxes behave like Slack's own composer: type `@` to pick a person or group and it
+  posts as a real, notifying mention, and the formatting toolbar works. `@channel`, `@here` and
+  `@everyone` are the exception — they post as inert text rather than pinging everyone on a
+  schedule.
 - **Run now** posts immediately but still respects holidays and cadence, so it rehearses the real
   thing. Unlike the form's **Create**/**Save**, the row buttons still ask for Approve first — a
   click is too easy to hit by accident, and **Remove** cannot be undone.

@@ -1,4 +1,5 @@
 import type {
+  BodyFormat,
   Fire,
   Holiday,
   Host,
@@ -94,14 +95,22 @@ export function setReminderDays(channelId: string, code: string, days: string): 
 }
 
 /**
- * Resets body_format too: text typed into the form is Markdown. Call this only
- * when the message actually changed — see `plannedEdit` — or a body captured
- * from a Slack message gets silently reinterpreted.
+ * Writes the dialect alongside the text: the two travel together, and storing a
+ * body under the wrong one silently reinterprets it. Call this only when the
+ * message actually changed — see `plannedEdit`.
  */
-export function setReminderMessage(channelId: string, code: string, message: string): void {
-  stmt(
-    "UPDATE reminders SET message = ?, body_format = 'markdown' WHERE channel_id = ? AND code = ?",
-  ).run(message, channelId, code);
+export function setReminderMessage(
+  channelId: string,
+  code: string,
+  message: string,
+  bodyFormat: BodyFormat,
+): void {
+  stmt("UPDATE reminders SET message = ?, body_format = ? WHERE channel_id = ? AND code = ?").run(
+    message,
+    bodyFormat,
+    channelId,
+    code,
+  );
 }
 
 export function setReminderLeadMinutes(channelId: string, code: string, leadMinutes: number): void {
