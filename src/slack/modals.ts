@@ -279,10 +279,9 @@ export interface PlannedEdit {
 }
 
 /**
- * Writing a field that did not change is not a no-op here — `setReminderMessage`
- * also resets the body format to Markdown, which would silently reinterpret a
- * body captured from a Slack message, and re-planning the lap redraws an order
- * people have already read off `show`. So each write has to be earned.
+ * Writing a field that did not change is not a no-op here — `replaceHosts`
+ * re-plans the lap, redrawing an order people have already read off `show`.
+ * So each write has to be earned.
  */
 export function plannedEdit(
   existing: Reminder,
@@ -297,7 +296,14 @@ export function plannedEdit(
   if (at !== existing.at) planned.at = at;
   if (days !== existing.days) planned.days = days;
   if (fields.everyNWeeks !== existing.everyNWeeks) planned.everyNWeeks = fields.everyNWeeks;
-  if (fields.message !== undefined && fields.message !== existing.message) {
+
+  // Compared against what the box would submit back untouched, not the raw
+  // stored string: the parse/render pair isn't lossless for every entity (a
+  // captured `<!channel>` reopens live but renders back inert), so comparing
+  // against the raw value would treat a same-form-submit as a real edit and
+  // permanently defuse it.
+  const roundTripped = (body: string): string => renderRichText(parseRichText(body));
+  if (fields.message !== undefined && fields.message !== roundTripped(existing.message)) {
     planned.message = fields.message;
   }
   if (leadMinutes !== existing.leadMinutes) planned.leadMinutes = leadMinutes;
@@ -305,7 +311,8 @@ export function plannedEdit(
   // An emptied box and a never-set one both mean no heads-up, and the column
   // holds both "" and NULL — normalize before comparing or every edit rewrites it.
   const preMessage = fields.preMessage || null;
-  if (preMessage !== (existing.preMessage || null)) planned.preMessage = preMessage;
+  const existingPreMessage = existing.preMessage ? roundTripped(existing.preMessage) : null;
+  if (preMessage !== existingPreMessage) planned.preMessage = preMessage;
 
   if (!sameRoster(roster, fields.hosts)) planned.hosts = fields.hosts;
 

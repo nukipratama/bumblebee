@@ -138,7 +138,11 @@ function entityElement(groups: Record<string, string | undefined>): RichTextElem
   }
   if (groups.channel) return { type: "channel", channel_id: groups.channel };
   if (groups.url) {
-    return { type: "link", url: groups.url, ...(groups.label ? { text: groups.label } : {}) };
+    return {
+      type: "link",
+      url: groups.url,
+      ...(groups.label ? { text: unescapeMrkdwn(groups.label) } : {}),
+    };
   }
   if (groups.emoji && isEmojiName(groups.emoji)) return { type: "emoji", name: groups.emoji };
   return undefined;

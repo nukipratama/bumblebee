@@ -194,6 +194,31 @@ describe("parseRichText", () => {
     );
   });
 
+  it("unescapes a link's display text, so re-rendering it does not double-escape", () => {
+    const stored = "<https://example.com|Sprint Planning &amp; Standup>";
+
+    assert.deepEqual(
+      parseRichText(stored),
+      block(
+        section([
+          { type: "link", url: "https://example.com", text: "Sprint Planning & Standup" },
+        ]),
+      ),
+    );
+    assert.equal(renderRichText(parseRichText(stored)), stored);
+  });
+
+  /**
+   * The two entities that deliberately do not survive the pair. Both stay inert
+   * or resolve to the same thing on the post, so the normalizing is harmless —
+   * but `plannedEdit` has to compare against the re-rendered form, or opening
+   * the edit form on one of these and changing the time alone rewrites the body.
+   */
+  it("normalizes a broadcast and drops a channel label, which the pair cannot carry", () => {
+    assert.equal(renderRichText(parseRichText("<!channel> standup")), "@channel standup");
+    assert.equal(renderRichText(parseRichText("<#C1|general> standup")), "<#C1> standup");
+  });
+
   it("leaves a clock time alone rather than reading :30: as an emoji", () => {
     assert.deepEqual(
       parseRichText("standup 09:30:00"),

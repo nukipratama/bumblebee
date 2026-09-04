@@ -373,6 +373,36 @@ describe("plannedEdit", () => {
     assert.equal(planned.message, undefined);
   });
 
+  /**
+   * A captured `<!channel>` reopens as a live broadcast chip but submits back
+   * inert, so the box cannot hand back the stored string byte for byte. What
+   * the box would return untouched is the only fair thing to compare against —
+   * against the raw value, changing the time alone would rewrite the body.
+   */
+  it("leaves a body the box cannot hand back verbatim alone, when it was not edited", () => {
+    const cases = [
+      { stored: "<!channel> standup", submitted: "@channel standup" },
+      { stored: "<#C1|general> standup", submitted: "<#C1> standup" },
+    ];
+
+    for (const body of cases) {
+      const captured = reminder({ ...stored, bodyFormat: "mrkdwn", message: body.stored });
+      const untouched = { ...unchanged, message: body.submitted, at: "10:00" };
+      const planned = plannedEdit(captured, roster, untouched, "10:00", "monday", 0);
+
+      assert.equal(planned.at, "10:00");
+      assert.equal(planned.message, undefined, `${body.stored} was rewritten without being edited`);
+    }
+  });
+
+  it("still plans a write when that same body is genuinely edited", () => {
+    const captured = reminder({ ...stored, bodyFormat: "mrkdwn", message: "<!channel> standup" });
+    const edited = { ...unchanged, message: "@channel standup, bring notes" };
+    const planned = plannedEdit(captured, roster, edited, "09:00", "monday", 0);
+
+    assert.equal(planned.message, "@channel standup, bring notes");
+  });
+
   it("plans each field that genuinely changed, and only those", () => {
     const edited = { ...unchanged, message: "New!", everyNWeeks: 2, hosts: ["U_A", "U_B"] };
     const planned = plannedEdit(stored, roster, edited, "16:30", "friday", 0);
