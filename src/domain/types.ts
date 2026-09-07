@@ -49,13 +49,18 @@ export interface Host {
   lapOrder: number | null;
 }
 
-/** `messageTs` is the early post and `joinMessageTs` the one at `at`; either may carry the button. */
+/**
+ * `messageTs` is the early post and `joinMessageTs` the one at `at`; either may carry the button.
+ * `hostUserId` is who runs the meeting and `turnUserId` whose lap turn it spent — a handover or a
+ * stand-in moves one without the other, and `turnUserId` is null when nobody's turn was spent.
+ */
 export interface Fire {
   id: number;
   reminderId: number;
   firedOn: string;
   firedAt: string;
   hostUserId: string | null;
+  turnUserId: string | null;
   messageTs: string | null;
   joinMessageTs: string | null;
 }

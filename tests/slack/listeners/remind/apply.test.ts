@@ -15,6 +15,7 @@ const {
   getHoliday,
   getReminder,
   insertReminder,
+  lastHostedOn,
   listHosts,
   recordFire,
   replaceHosts,
@@ -176,14 +177,18 @@ describe("host current", () => {
   const NOW_TIME = localParts(new Date()).time;
   const MESSAGE_TS = "1700000000.0001";
 
-  function fireToday(reminder: Reminder, hostUserId: string | null): void {
+  function fireToday(
+    reminder: Reminder,
+    hostUserId: string | null,
+    nextLap: readonly string[] = [],
+  ): void {
     recordFire({
       reminderId: reminder.id,
       firedOn: TODAY,
       firedAt: new Date(),
       hostUserId,
       messageTs: MESSAGE_TS,
-      nextLap: [],
+      nextLap,
     });
   }
 
@@ -250,6 +255,44 @@ describe("host current", () => {
 
     assert.match(result.ephemeral, /already skipped/);
     assert.equal(getFireForDate(reminder.id, TODAY)?.hostUserId, "U_A");
+  });
+
+  it("charges the stand-in's turn and returns the original host to the back of the lap", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    fireToday(reminder, "U_A", ["U_B", "U_C"]);
+    const { client } = fakeClient();
+
+    const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.equal(getFireForDate(reminder.id, TODAY)?.turnUserId, "U_B");
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_C", "U_A"]);
+    assert.match(result.channel ?? "", /<@U_A> keeps their turn/);
+  });
+
+  it("charges nobody when the stand-in already hosted this lap", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B", "U_C"], ["U_A", "U_C"]);
+    fireToday(reminder, "U_A", ["U_C"]);
+    const { client } = fakeClient();
+
+    await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    assert.equal(getFireForDate(reminder.id, TODAY)?.turnUserId, null);
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_C", "U_A"]);
+  });
+
+  it("credits the turn to whoever paid for it, not to the stand-in", async () => {
+    const reminder = seed({ at: NOW_TIME });
+    replaceHosts(reminder.id, ["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+    fireToday(reminder, "U_A", ["U_B", "U_C"]);
+    const { client } = fakeClient();
+
+    await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());
+
+    const hosted = lastHostedOn(reminder.id);
+    assert.equal(hosted.get("U_B"), TODAY);
+    assert.equal(hosted.has("U_A"), false);
   });
 
   it("reports an accurate message when reposting the live message fails", async () => {

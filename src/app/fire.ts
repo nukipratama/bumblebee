@@ -47,6 +47,10 @@ export async function fireReminder(
 
   if (!cadenceOk(reminder, date)) return { posted: false, reason: cadenceReason(reminder, date) };
 
+  // Checked before the post, not left to the unique index: a duplicate that only
+  // failed at recordFire would already be in the channel, with nobody's turn spent.
+  if (getFireForDate(reminder.id, date)) return { posted: false, reason: "already fired today" };
+
   const roster = listHosts(reminder.id);
   const lap = pendingLap(roster);
   const host = lap[0];

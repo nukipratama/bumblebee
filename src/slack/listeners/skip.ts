@@ -13,6 +13,7 @@ import {
   listHosts,
   listSkips,
   setFireHost,
+  setFireTurn,
   setLap,
 } from "../../store/reminders.js";
 import { SKIP_ACTION } from "../blocks.js";
@@ -59,26 +60,31 @@ function handOver(
   const skipping = new Set(listSkips(fire.id).map((skip) => skip.userId));
   const replacement = next.find((userId) => userId !== clicker && !skipping.has(userId));
 
-  // The clicker rejoins at the back, which is what keeps their turn. Anyone
-  // passed over keeps their place — skipping costs nobody a turn.
+  // The clicker rejoins at the back only if this fire actually spent their turn.
+  // A stand-in hosting for free (they'd already hosted this lap, see swapTurn) owns
+  // no turn to keep, and re-adding them here would hand them a second one.
+  const keepsTurn = fire.turnUserId === clicker;
+  // Anyone passed over keeps their place — skipping costs nobody a turn.
   const remaining = next.filter((userId) => userId !== clicker && userId !== replacement);
   transaction(() => {
-    setLap(reminder.id, [...remaining, clicker]);
+    setLap(reminder.id, keepsTurn ? [...remaining, clicker] : remaining);
     // They clicked Skip me, so they are skipping as well as not hosting.
     addSkip(fire.id, clicker, reason);
     setFireHost(fire.id, replacement ?? null);
+    // The replacement is the one leaving the lap, so the turn is theirs now.
+    setFireTurn(fire.id, replacement ?? null);
   });
+
+  const suffix = keepsTurn ? ` — <@${clicker}> keeps their turn.` : ".";
 
   if (!replacement) {
     return {
-      announce:
-        `⚠️ Everyone left in the rotation has skipped, so nobody is hosting` +
-        ` — <@${clicker}> keeps their turn.`,
+      announce: `⚠️ Everyone left in the rotation has skipped, so nobody is hosting${suffix}`,
     };
   }
 
   return {
-    announce: `🔁 <@${replacement}> is hosting instead — <@${clicker}> keeps their turn.`,
+    announce: `🔁 <@${replacement}> is hosting instead${suffix}`,
   };
 }
 

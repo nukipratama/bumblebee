@@ -131,8 +131,9 @@ tests/                          # mirrors the src/ path of what it covers
   editing go through the modal in `slack/modals.ts`, which writes on submit rather than raising an
   Approve/Reject prompt. Single-click buttons still confirm — a click is too easy to hit by accident.
 - **Only write a field the form actually changed** — `plannedEdit` in `slack/modals.ts` decides, and
-  the listener just executes it. `replaceHosts` is the reason: it re-plans the lap, redrawing an
-  order people have already read off `show`.
+  the listener just executes it. `replaceHosts` is the reason: it rewrites every roster row. The lap
+  order itself survives an edit — `planLap` keeps whoever is still pending in place and draws
+  newcomers in behind them, so adding one person cannot reshuffle the queue.
 - **The Skip me button cannot hide or relabel per-person, and that is not a bug.** A fired reminder is
   one shared channel message, so `chat.update` rewrites it for everyone and Slack has no per-viewer
   rendering. Anything the button said after a click would be said to the whole channel, and hiding it

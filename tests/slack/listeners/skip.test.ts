@@ -8,6 +8,7 @@ useTempDatabase();
 
 const { initDb, stmt } = await import("../../../src/store/database.js");
 const {
+  addSkip,
   getFireByMessageTs,
   getReminder,
   getSkip,
@@ -16,6 +17,7 @@ const {
   listSkips,
   recordFire,
   replaceHosts,
+  setFireTurn,
   setJoinMessageTs,
 } = await import("../../../src/store/reminders.js");
 const { applySkip } = await import("../../../src/slack/listeners/skip.js");
@@ -72,6 +74,23 @@ describe("the host hands over", () => {
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
     assert.match(outcome.announce ?? "", /<@U_B> is hosting instead/);
+  });
+
+  it("moves the turn record to the replacement, so the clicker is not credited with hosting", () => {
+    const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
+
+    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+
+    assert.equal(getFireByMessageTs(MESSAGE_TS)?.turnUserId, "U_B");
+  });
+
+  it("records no turn at all when nobody can take over", () => {
+    const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
+    addSkip(fire.id, "U_B", null);
+
+    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+
+    assert.equal(getFireByMessageTs(MESSAGE_TS)?.turnUserId, null);
   });
 
   it("marks the outgoing host as skipping", () => {
@@ -147,6 +166,38 @@ describe("the host hands over", () => {
     assert.match(outcome.ephemeral ?? "", /only person/);
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_A");
     assert.deepEqual(skipIds(fire.id), []);
+  });
+
+  it("does not grant a free stand-in an extra turn when they hand over", () => {
+    const reminder = newReminder({ at: AT });
+    insertReminder(reminder);
+    const stored = getReminder(reminder.channelId, reminder.code)!;
+    // U_A already hosted this lap; U_B and U_C are still pending.
+    replaceHosts(stored.id, ["U_A", "U_B", "U_C"], ["U_B", "U_C"]);
+    // U_A stands in as host at no cost — a "Set current host" onto someone
+    // who'd already hosted (swapTurn's free-stand-in branch) leaves the pending
+    // lap untouched and the turn unspent, which this reproduces directly.
+    recordFire({
+      reminderId: stored.id,
+      firedOn: FIRED_ON,
+      firedAt: new Date(MEETING),
+      hostUserId: "U_A",
+      messageTs: MESSAGE_TS,
+      nextLap: ["U_B", "U_C"],
+    });
+    const fire = getFireByMessageTs(MESSAGE_TS)!;
+    setFireTurn(fire.id, null);
+
+    const outcome = applySkip({
+      fire: getFireByMessageTs(MESSAGE_TS)!,
+      reminder: stored,
+      clicker: "U_A",
+      now: MEETING,
+    });
+
+    assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
+    assert.equal(outcome.announce, "🔁 <@U_B> is hosting instead.");
+    assert.deepEqual(pendingLap(listHosts(stored.id)), ["U_C"]);
   });
 
   it("records a reason alongside the handover, which the posts then carry", () => {

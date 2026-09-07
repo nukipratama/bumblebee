@@ -21,6 +21,7 @@ import {
   REMINDER_FORM,
   type FormFields,
   type FormSource,
+  type PlannedEdit,
   plannedEdit,
   readSubmission,
   reminderModal,
@@ -53,7 +54,7 @@ function applyEdit(
   at: string,
   days: string,
   leadMinutes: number,
-): void {
+): PlannedEdit {
   const { channelId, code } = existing;
   const roster = listHosts(existing.id);
   const planned = plannedEdit(existing, roster, fields, at, days, leadMinutes);
@@ -73,6 +74,8 @@ function applyEdit(
       replaceHosts(existing.id, planned.hosts, planLap(roster, planned.hosts));
     }
   });
+
+  return planned;
 }
 
 export function registerReminderForm(app: App): void {
@@ -165,7 +168,10 @@ export function registerReminderForm(app: App): void {
 
     try {
       if (existing) {
-        applyEdit(existing, fields, checked.at, checked.days, checked.leadMinutes);
+        const planned = applyEdit(existing, fields, checked.at, checked.days, checked.leadMinutes);
+        const changed = Object.keys(planned).join(", ") || "nothing";
+        const roster = planned.hosts ? ` — roster now ${planned.hosts.join(", ")}` : "";
+        logger.info(`${userId} edited \`${existing.code}\`: ${changed}${roster}`);
         const updated = getReminder(existing.channelId, existing.code)!;
         await client.chat.postMessage({
           channel: existing.channelId,

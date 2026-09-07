@@ -15,6 +15,22 @@ export type PendingAction =
   | { kind: "hostNext"; code: string; userId: string }
   | { kind: "hostCurrent"; code: string; userId: string };
 
+/** One log line per applied confirmation, so a rotation change can be traced afterwards. */
+export function describeAction(action: PendingAction): string {
+  switch (action.kind) {
+    case "remove":
+    case "run":
+    case "hostSkip":
+      return `${action.kind} ${action.code}`;
+    case "holidayAdd":
+    case "holidayRemove":
+      return `${action.kind} ${action.date}`;
+    case "hostNext":
+    case "hostCurrent":
+      return `${action.kind} ${action.code} ${action.userId}`;
+  }
+}
+
 export interface PendingEntry {
   action: PendingAction;
   userId: string;

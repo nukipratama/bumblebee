@@ -1,5 +1,7 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
+import { localParts } from "../../../domain/clock.js";
+import { getFireForDate } from "../../../store/reminders.js";
 import {
   APPROVE_ACTION,
   REJECT_ACTION,
@@ -7,7 +9,7 @@ import {
   RUN_REMINDER_ACTION,
   confirmBlocks,
 } from "../../blocks.js";
-import { put, takeIfFreshAndOwnedBy } from "../../pending.js";
+import { describeAction, put, takeIfFreshAndOwnedBy } from "../../pending.js";
 import { formatSchedule } from "../../text.js";
 import { applyAction } from "./apply.js";
 import { unwrap, type CommandContext } from "./context.js";
@@ -95,6 +97,7 @@ async function resolveConfirmation({
 
   try {
     const result = await applyAction(entry, client, logger);
+    logger.info(`${describeAction(entry.action)} by ${entry.userId} in ${entry.channelId}`);
     await respond({ replace_original: true, text: result.ephemeral });
     if (result.channel) {
       await client.chat.postMessage({ channel: entry.channelId, text: result.channel });
@@ -146,10 +149,16 @@ export function registerRemind(app: App): void {
     RUN_REMINDER_ACTION,
     async ({ ack, body, respond, logger }) => {
       await ack();
-      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => ({
-        summary: `Post \`${reminder.code}\` to this channel now?\n\n${reminder.message}`,
-        action: { kind: "run", code: reminder.code },
-      }));
+      await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => {
+        const again = getFireForDate(reminder.id, localParts(new Date()).date)
+          ? `\n\n⚠️ \`${reminder.code}\` already fired today, so this will be refused — one post per day.`
+          : "";
+
+        return {
+          summary: `Post \`${reminder.code}\` to this channel now?${again}\n\n${reminder.message}`,
+          action: { kind: "run", code: reminder.code },
+        };
+      });
     },
   );
 

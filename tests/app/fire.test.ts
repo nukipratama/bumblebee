@@ -160,6 +160,29 @@ describe("fireReminder — guards", () => {
 
     assert.equal(outcome.posted, true);
   });
+
+  it("refuses a second fire on a day that already fired, without posting", async () => {
+    const reminder = withRoster(["U_A", "U_B"]);
+    const { client, posted } = fakeClient();
+
+    await fireReminder(reminder, client, "meeting");
+    const outcome = await fireReminder(getReminderById(reminder.id)!, client, "meeting");
+
+    assert.equal(outcome.posted, false);
+    assert.match(outcome.posted === false ? outcome.reason : "", /already fired today/);
+    assert.equal(posted.length, 1);
+  });
+
+  it("leaves the lap where the first fire of the day left it", async () => {
+    const reminder = withRoster(["U_A", "U_B", "U_C"]);
+    const { client } = fakeClient();
+
+    await fireReminder(reminder, client, "meeting");
+    const afterFirst = pendingLap(listHosts(reminder.id));
+    await fireReminder(getReminderById(reminder.id)!, client, "meeting");
+
+    assert.deepEqual(pendingLap(listHosts(reminder.id)), afterFirst);
+  });
 });
 
 describe("fireReminder — the post itself", () => {
