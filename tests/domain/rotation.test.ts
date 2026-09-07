@@ -10,6 +10,7 @@ import {
   planLap,
   sameRoster,
   shuffle,
+  swapTurn,
 } from "../../src/domain/rotation.js";
 import type { Host } from "../../src/domain/types.js";
 
@@ -128,8 +129,26 @@ describe("planLap", () => {
     assert.deepEqual(withDave, ["bob", "cara", "dave"]);
   });
 
-  it("re-draws from the top when whoever was up got dropped", () => {
+  it("closes the gap rather than reshuffling when someone is dropped", () => {
     assert.deepEqual(planLap(midLap, ["alice", "cara"], noSwaps), ["cara"]);
+  });
+
+  it("holds the pending order steady however the shuffle would have fallen", () => {
+    const longLap: Host[] = [
+      { userId: "bob", lapOrder: 0 },
+      { userId: "cara", lapOrder: 1 },
+      { userId: "dave", lapOrder: 2 },
+      { userId: "erin", lapOrder: 3 },
+    ];
+    const roster = ["bob", "cara", "dave", "erin", "finn"];
+
+    assert.deepEqual(planLap(longLap, roster, scripted([0, 0, 0, 0])), [
+      "bob",
+      "cara",
+      "dave",
+      "erin",
+      "finn",
+    ]);
   });
 
   it("starts a fresh lap once every member has hosted", () => {
@@ -199,5 +218,48 @@ describe("sameRoster", () => {
   it("spots clearing a roster, and adding the first one", () => {
     assert.equal(sameRoster(roster("alice"), []), false);
     assert.equal(sameRoster([], ["alice"]), false);
+  });
+});
+
+describe("swapTurn", () => {
+  const LAP = ["bob", "cara", "dan"];
+
+  it("charges a pending stand-in and returns the previous one to the back", () => {
+    assert.deepEqual(swapTurn(LAP, "cara", "alice"), {
+      lap: ["bob", "dan", "alice"],
+      turnUserId: "cara",
+    });
+  });
+
+  it("charges nobody when the stand-in already hosted this lap", () => {
+    assert.deepEqual(swapTurn(LAP, "erin", "alice"), {
+      lap: ["bob", "cara", "dan", "alice"],
+      turnUserId: null,
+    });
+  });
+
+  it("returns nobody when the fire cost the rotation no turn", () => {
+    assert.deepEqual(swapTurn(LAP, "cara", null), {
+      lap: ["bob", "dan"],
+      turnUserId: "cara",
+    });
+  });
+
+  it("does not double-enter a previous host who is already pending", () => {
+    assert.deepEqual(swapTurn(LAP, "cara", "dan"), {
+      lap: ["bob", "dan"],
+      turnUserId: "cara",
+    });
+  });
+
+  it("returns the previous host onto a lap the stand-in just emptied", () => {
+    assert.deepEqual(swapTurn(["cara"], "cara", "alice"), {
+      lap: ["alice"],
+      turnUserId: "cara",
+    });
+  });
+
+  it("leaves a closed lap alone when neither of them is pending", () => {
+    assert.deepEqual(swapTurn([], "cara", null), { lap: [], turnUserId: null });
   });
 });

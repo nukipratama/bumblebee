@@ -211,6 +211,11 @@ const migrations: string[] = [
   `CREATE INDEX idx_reminder_fires_join_message_ts ON reminder_fires(join_message_ts)`,
   `CREATE INDEX idx_reminder_fires_reminder_fired_on ON reminder_fires(reminder_id, fired_on)`,
   `CREATE INDEX idx_cf_messages_message_ts ON cf_messages(message_ts)`,
+  // host_user_id is rewritten in place by a handover or "Set current host", which
+  // erased whose lap turn the fire actually spent. Backfilled from host_user_id:
+  // the values overwritten before this column existed are unrecoverable.
+  `ALTER TABLE reminder_fires ADD COLUMN turn_user_id TEXT`,
+  `UPDATE reminder_fires SET turn_user_id = host_user_id`,
 ];
 
 export function initDb(): void {

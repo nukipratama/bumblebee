@@ -84,10 +84,15 @@ export function registerRotationActions(app: App): void {
         const check = checkHostCurrent(reminder, userId, Date.now());
         if ("error" in check) return { error: check.error };
 
+        const cost = check.swap.turnUserId
+          ? `${mention(userId)} spends their turn`
+          : `${mention(userId)} already hosted this lap, so no turn is spent`;
+        const returning = check.fire.turnUserId
+          ? ` — ${mention(check.fire.turnUserId)} goes back into the rotation.`
+          : ".";
+
         return {
-          summary:
-            `Set ${mention(userId)} as the current host for \`${code}\`?\n` +
-            "This changes only today's meeting — the rotation is unaffected.",
+          summary: `Set ${mention(userId)} as the current host for \`${code}\`?\n${cost}${returning}`,
           action: { kind: "hostCurrent", code, userId },
         };
       });

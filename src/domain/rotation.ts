@@ -28,6 +28,30 @@ export function moveToBack(order: readonly string[], userId: string): string[] {
   return [...order.filter((id) => id !== userId), userId];
 }
 
+export interface TurnSwap {
+  lap: string[];
+  turnUserId: string | null;
+}
+
+/**
+ * Hands the turn `charged` paid for to `standIn`. `charged` rejoins at the back, as a
+ * handover's clicker does. A `standIn` who already hosted this lap is not in `lap` and so
+ * pays nothing — the day costs the rotation no turn at all.
+ */
+export function swapTurn(
+  lap: readonly string[],
+  standIn: string,
+  charged: string | null,
+): TurnSwap {
+  const withoutStandIn = lap.filter((id) => id !== standIn);
+  const returns = charged !== null && !withoutStandIn.includes(charged);
+
+  return {
+    lap: returns ? [...withoutStandIn, charged!] : withoutStandIn,
+    turnUserId: lap.includes(standIn) ? standIn : null,
+  };
+}
+
 /**
  * Moving the only pending member to the back is a no-op, so a closing lap rolls
  * over instead — and rolling straight back onto them would make `skip` appear to
@@ -66,8 +90,10 @@ export function pendingLap(roster: readonly Host[]): string[] {
 
 /**
  * Anyone who already hosted this lap stays hosted, so correcting a typo cannot
- * hand someone a second turn. Whoever was up stays up if they survived the
- * change. A roster whose members have all hosted starts a fresh lap.
+ * hand someone a second turn. Everyone still pending keeps the place they hold
+ * now — an edit that adds or drops one person must not reshuffle the queue the
+ * rest have already read off `show` — and newcomers are drawn in behind them. A
+ * roster whose members have all hosted starts a fresh lap.
  */
 export function planLap(
   existing: readonly Host[],
@@ -75,10 +101,15 @@ export function planLap(
   random: () => number = Math.random,
 ): string[] {
   const hosted = new Set(existing.filter(hasHosted).map((member) => member.userId));
-  const upNext = existing
+  const pendingNow = existing
     .filter((member) => !hasHosted(member))
-    .sort((a, b) => a.lapOrder! - b.lapOrder!)[0]?.userId;
+    .sort((a, b) => a.lapOrder! - b.lapOrder!)
+    .map((member) => member.userId);
 
-  const pending = userIds.filter((id) => !hosted.has(id));
-  return pending.length > 0 ? drawLap(pending, upNext, random) : drawLap(userIds, undefined, random);
+  const chosen = new Set(userIds);
+  const keeping = pendingNow.filter((id) => chosen.has(id));
+  const joining = userIds.filter((id) => !hosted.has(id) && !pendingNow.includes(id));
+
+  if (keeping.length === 0 && joining.length === 0) return drawLap(userIds, undefined, random);
+  return [...keeping, ...shuffle(joining, random)];
 }

@@ -279,9 +279,8 @@ export interface PlannedEdit {
 }
 
 /**
- * Writing a field that did not change is not a no-op here — `replaceHosts`
- * re-plans the lap, redrawing an order people have already read off `show`.
- * So each write has to be earned.
+ * Only the writes an edit actually earned: `replaceHosts` rewrites every roster
+ * row, so a field that did not change has no business reaching the database.
  */
 export function plannedEdit(
   existing: Reminder,

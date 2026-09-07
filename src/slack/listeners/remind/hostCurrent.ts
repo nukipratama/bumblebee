@@ -1,10 +1,11 @@
 import { localParts } from "../../../domain/clock.js";
 import { hostChangeOpen } from "../../../domain/handover.js";
+import { pendingLap, swapTurn, type TurnSwap } from "../../../domain/rotation.js";
 import type { Fire, Reminder } from "../../../domain/types.js";
 import { getFireForDate, listHosts, listSkips } from "../../../store/reminders.js";
 import { mention } from "../../text.js";
 
-export type HostCurrentCheck = { fire: Fire } | { error: string };
+export type HostCurrentCheck = { fire: Fire; swap: TurnSwap } | { error: string };
 
 /** Re-run at both prompt-build and apply time, since state can change in between. */
 export function checkHostCurrent(reminder: Reminder, userId: string, now: number): HostCurrentCheck {
@@ -15,7 +16,8 @@ export function checkHostCurrent(reminder: Reminder, userId: string, now: number
     return { error: `${mention(userId)} is already hosting \`${reminder.code}\`.` };
   }
 
-  if (!listHosts(reminder.id).some((member) => member.userId === userId)) {
+  const roster = listHosts(reminder.id);
+  if (!roster.some((member) => member.userId === userId)) {
     return { error: `${mention(userId)} is not on the rotation for \`${reminder.code}\`` };
   }
 
@@ -29,5 +31,5 @@ export function checkHostCurrent(reminder: Reminder, userId: string, now: number
     };
   }
 
-  return { fire };
+  return { fire, swap: swapTurn(pendingLap(roster), userId, fire.turnUserId) };
 }

@@ -29,6 +29,7 @@ const FIRE_COLUMNS = `id,
          fired_on        AS firedOn,
          fired_at        AS firedAt,
          host_user_id    AS hostUserId,
+         turn_user_id    AS turnUserId,
          message_ts      AS messageTs,
          join_message_ts AS joinMessageTs`;
 
@@ -156,12 +157,14 @@ export function recordFire(fire: NewFire): void {
       fire.reminderId,
     );
     stmt(
-      `INSERT INTO reminder_fires (reminder_id, fired_on, fired_at, host_user_id, message_ts)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO reminder_fires
+         (reminder_id, fired_on, fired_at, host_user_id, turn_user_id, message_ts)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(
       fire.reminderId,
       fire.firedOn,
       fire.firedAt.toISOString(),
+      fire.hostUserId,
       fire.hostUserId,
       fire.messageTs,
     );
@@ -244,10 +247,17 @@ export function getFireByMessageTs(messageTs: string): Fire | undefined {
   ).get(messageTs, messageTs) as unknown as Fire | undefined;
 }
 
-/** Whether the early post already fired today, which is what the post at `at` branches on. */
+/**
+ * Whether the early post already fired today, which is what the post at `at` branches on.
+ * Newest first: `/bee-remind run` can add a second fire for a day that already fired, and
+ * the buttons belong to the live post, not the one it superseded.
+ */
 export function getFireForDate(reminderId: number, firedOn: string): Fire | undefined {
   return stmt(
-    `SELECT ${FIRE_COLUMNS} FROM reminder_fires WHERE reminder_id = ? AND fired_on = ?`,
+    `SELECT ${FIRE_COLUMNS} FROM reminder_fires
+      WHERE reminder_id = ? AND fired_on = ?
+      ORDER BY id DESC
+      LIMIT 1`,
   ).get(reminderId, firedOn) as unknown as Fire | undefined;
 }
 
@@ -258,6 +268,11 @@ export function setJoinMessageTs(fireId: number, messageTs: string | null): void
 /** Null when a handover found nobody available, which the post reports. */
 export function setFireHost(fireId: number, hostUserId: string | null): void {
   stmt("UPDATE reminder_fires SET host_user_id = ? WHERE id = ?").run(hostUserId, fireId);
+}
+
+/** Null when the day cost the rotation no turn — see `swapTurn`. */
+export function setFireTurn(fireId: number, turnUserId: string | null): void {
+  stmt("UPDATE reminder_fires SET turn_user_id = ? WHERE id = ?").run(turnUserId, fireId);
 }
 
 export function getSkip(fireId: number, userId: string): Skip | undefined {
@@ -286,10 +301,10 @@ export function listSkips(fireId: number): Skip[] {
 
 export function lastHostedOn(reminderId: number): Map<string, string> {
   const rows = stmt(
-    `SELECT host_user_id AS userId, MAX(fired_on) AS firedOn
+    `SELECT turn_user_id AS userId, MAX(fired_on) AS firedOn
        FROM reminder_fires
-      WHERE reminder_id = ? AND host_user_id IS NOT NULL
-      GROUP BY host_user_id`,
+      WHERE reminder_id = ? AND turn_user_id IS NOT NULL
+      GROUP BY turn_user_id`,
   ).all(reminderId) as unknown as { userId: string; firedOn: string }[];
   return new Map(rows.map((row) => [row.userId, row.firedOn]));
 }

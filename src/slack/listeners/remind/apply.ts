@@ -3,6 +3,7 @@ import type { WebClient } from "@slack/web-api";
 import { fireReminder } from "../../../app/fire.js";
 import { drawLapAvoiding, moveToBack, moveToFront, pendingLap } from "../../../domain/rotation.js";
 import { repost } from "../../repost.js";
+import { transaction } from "../../../store/database.js";
 import {
   deleteHoliday,
   deleteReminder,
@@ -12,6 +13,7 @@ import {
   listHolidayDates,
   listHosts,
   setFireHost,
+  setFireTurn,
   setLap,
 } from "../../../store/reminders.js";
 import type { PendingEntry } from "../../pending.js";
@@ -130,8 +132,13 @@ async function applyHostCurrent(
   const check = checkHostCurrent(reminder, userId, Date.now());
   if ("error" in check) return { ephemeral: check.error };
 
-  setFireHost(check.fire.id, userId);
-  const updated = { ...check.fire, hostUserId: userId };
+  const { fire, swap } = check;
+  transaction(() => {
+    setLap(reminder.id, swap.lap);
+    setFireHost(fire.id, userId);
+    setFireTurn(fire.id, swap.turnUserId);
+  });
+  const updated = { ...fire, hostUserId: userId, turnUserId: swap.turnUserId };
 
   try {
     await repost(client, updated, reminder, entry.channelId);
@@ -142,9 +149,10 @@ async function applyHostCurrent(
     };
   }
 
+  const kept = fire.turnUserId ? ` — ${mention(fire.turnUserId)} keeps their turn` : "";
   return {
     ephemeral: `${mention(userId)} is now hosting \`${code}\`.`,
-    channel: `${mention(entry.userId)} set ${mention(userId)} as the current host for \`${code}\``,
+    channel: `${mention(entry.userId)} set ${mention(userId)} as the current host for \`${code}\`${kept}`,
   };
 }
 
