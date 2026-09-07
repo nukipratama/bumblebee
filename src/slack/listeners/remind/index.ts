@@ -1,7 +1,7 @@
 import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { localParts } from "../../../domain/clock.js";
-import { getFireForDate, listHosts } from "../../../store/reminders.js";
+import { getFireForDate } from "../../../store/reminders.js";
 import {
   APPROVE_ACTION,
   REJECT_ACTION,
@@ -150,10 +150,8 @@ export function registerRemind(app: App): void {
     async ({ ack, body, respond, logger }) => {
       await ack();
       await askFromRow({ body, respond, logger }, body.actions[0]!.value!, (reminder) => {
-        const alreadyFired = getFireForDate(reminder.id, localParts(new Date()).date);
-        const cost = listHosts(reminder.id).length > 0 ? " and spends another turn" : "";
-        const again = alreadyFired
-          ? `\n\n⚠️ \`${reminder.code}\` already fired today — posting again duplicates it${cost}.`
+        const again = getFireForDate(reminder.id, localParts(new Date()).date)
+          ? `\n\n⚠️ \`${reminder.code}\` already fired today, so this will be refused — one post per day.`
           : "";
 
         return {

@@ -216,6 +216,16 @@ const migrations: string[] = [
   // the values overwritten before this column existed are unrecoverable.
   `ALTER TABLE reminder_fires ADD COLUMN turn_user_id TEXT`,
   `UPDATE reminder_fires SET turn_user_id = host_user_id`,
+  // A manual run on a day that already fired left a second row, and the buttons
+  // then had two to choose between. The newest is the live post, so older
+  // duplicates go (with their skips, which belong to a post nobody can see now).
+  `DELETE FROM reminder_fires
+    WHERE id NOT IN (
+      SELECT MAX(id) FROM reminder_fires GROUP BY reminder_id, fired_on
+    )`,
+  `DROP INDEX idx_reminder_fires_reminder_fired_on`,
+  `CREATE UNIQUE INDEX idx_reminder_fires_reminder_fired_on
+     ON reminder_fires(reminder_id, fired_on)`,
 ];
 
 export function initDb(): void {
