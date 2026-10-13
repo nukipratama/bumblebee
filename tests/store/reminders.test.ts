@@ -14,6 +14,7 @@ const {
   getHoliday,
   getReminder,
   getReminderById,
+  getReport,
   getSkip,
   insertHoliday,
   insertReminder,
@@ -23,11 +24,14 @@ const {
   listHolidays,
   listHosts,
   listReminders,
+  listReports,
   listSkips,
   recordFire,
   replaceHosts,
   setFireHost,
+  setReportNotice,
   setLap,
+  upsertReport,
   setReminderMessage,
 } = await import("../../src/store/reminders.js");
 
@@ -324,5 +328,51 @@ describe("holidays", () => {
 
     assert.equal(getHoliday("2026-08-17"), undefined);
     assert.equal(getHoliday("2026-01-01")?.date, "2026-01-01");
+  });
+});
+
+describe("reports", () => {
+  function fireWithReports(): number {
+    const id = seed();
+    recordFire({
+      reminderId: id,
+      firedOn: "2026-07-27",
+      firedAt: new Date(),
+      hostUserId: null,
+      messageTs: "555.5",
+      nextLap: [],
+    });
+    return getFireByMessageTs("555.5")!.id;
+  }
+
+  it("round-trips the update, who to sync with and the thread reply", () => {
+    const fireId = fireWithReports();
+
+    upsertReport(fireId, "U_A", "shipped it", ["U_B", "U_C"]);
+    setReportNotice(fireId, "U_A", "555.6");
+
+    assert.deepEqual({ ...getReport(fireId, "U_A") }, {
+      userId: "U_A",
+      body: "shipped it",
+      syncWith: ["U_B", "U_C"],
+      noticeTs: "555.6",
+    });
+  });
+
+  it("rewrites an edit in place, keeping the thread reply and the place in the list", () => {
+    const fireId = fireWithReports();
+    upsertReport(fireId, "U_A", "first", ["U_B"]);
+    setReportNotice(fireId, "U_A", "555.6");
+    upsertReport(fireId, "U_Z", "later", []);
+
+    upsertReport(fireId, "U_A", "edited", []);
+
+    assert.deepEqual(
+      listReports(fireId).map((report) => [report.userId, report.body, report.syncWith, report.noticeTs]),
+      [
+        ["U_A", "edited", [], "555.6"],
+        ["U_Z", "later", [], null],
+      ],
+    );
   });
 });

@@ -71,6 +71,16 @@ export interface Skip {
   reason: string | null;
 }
 
+/** An async standup update: never touches hosting, unlike a skip. */
+export interface Report {
+  userId: string;
+  /** Already mrkdwn-ready — see `renderRichText` in `slack/rich-text.ts`. */
+  body: string;
+  syncWith: string[];
+  /** The thread reply carrying `body`, so an edit rewrites it instead of piling up. */
+  noticeTs: string | null;
+}
+
 export interface NewFire {
   reminderId: number;
   firedOn: string;

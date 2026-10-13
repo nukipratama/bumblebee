@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { RichTextBlock, RichTextElement } from "@slack/types";
 import type { InputBlock, ModalView } from "@slack/web-api";
-import type { Host, Reminder, Skip } from "../../src/domain/types.js";
+import type { Host, Reminder, Report, Skip } from "../../src/domain/types.js";
 import {
+  BUZZ_FORM,
   SKIP_FORM,
   type FormFields,
   daysFromSelection,
   parseAt,
   plannedEdit,
+  buzzModal,
+  readBuzz,
   readSkipReason,
   readSubmission,
   reminderModal,
@@ -580,5 +583,58 @@ describe("plannedEdit — the heads-up", () => {
     const emptied = { ...same, preMessage: undefined };
     const planned = plannedEdit(stored, roster, emptied, "09:00", "monday", 0);
     assert.deepEqual(planned, { leadMinutes: 0, preMessage: null });
+  });
+});
+
+describe("buzzModal", () => {
+  const source = { channelId: "C1", messageTs: "1700000000.0001" };
+  const report: Report = { userId: "U_A", body: "shipped it", syncWith: ["U_B"], noticeTs: "1.2" };
+
+  const modal = (existing?: Report) => buzzModal(source, existing) as ModalView;
+  const input = (existing: Report | undefined, index: number) => modal(existing).blocks[index] as InputBlock;
+
+  it("points back at the post it was opened from", () => {
+    const view = modal();
+
+    assert.equal(view.callback_id, BUZZ_FORM);
+    assert.deepEqual(JSON.parse(view.private_metadata!), source);
+  });
+
+  it("requires the update but not who to sync with", () => {
+    assert.equal(input(undefined, 0).optional, undefined);
+    assert.equal(input(undefined, 1).optional, true);
+  });
+
+  it("opens empty the first time", () => {
+    assert.equal("initial_value" in input(undefined, 0).element, false);
+    assert.equal("initial_users" in input(undefined, 1).element, false);
+  });
+
+  it("reopens prefilled and retitled once you have buzzed in", () => {
+    const view = modal(report);
+
+    assert.equal(view.title.text, "Your update");
+    assert.equal(view.submit?.text, "Save");
+    assert.ok("initial_value" in input(report, 0).element);
+    assert.deepEqual((input(report, 1).element as { initial_users?: string[] }).initial_users, ["U_B"]);
+  });
+});
+
+describe("readBuzz", () => {
+  const submitted = (block: RichTextBlock | undefined, users?: string[]) =>
+    ({
+      update: { value: { type: "rich_text_input", rich_text_value: block } },
+      sync: { value: { type: "multi_users_select", selected_users: users } },
+    }) as Parameters<typeof readBuzz>[0];
+
+  it("reads the trimmed update and who to sync with", () => {
+    assert.deepEqual(readBuzz(submitted(richText([{ type: "text", text: " done " }]), ["U_B"])), {
+      body: "done",
+      syncWith: ["U_B"],
+    });
+  });
+
+  it("reads a blank update as missing, and nobody picked as an empty list", () => {
+    assert.deepEqual(readBuzz(submitted(richText([]))), { body: undefined, syncWith: [] });
   });
 });

@@ -5,7 +5,7 @@ import { DAY_NAMES, EVERY_DAY, WEEKDAYS, daysColumn, daysToSelection, isEveryDay
 import { fail, ok, type Parsed } from "../domain/result.js";
 import { sameRoster } from "../domain/rotation.js";
 import { cadenceFitsDays, leadFitsBeforeMidnight } from "../domain/schedule.js";
-import type { Host, Reminder, Skip } from "../domain/types.js";
+import type { Host, Reminder, Report, Skip } from "../domain/types.js";
 import { parseRichText, renderRichText } from "./rich-text.js";
 
 export const REMINDER_FORM = "remind_form";
@@ -434,4 +434,54 @@ export function skipModal(source: SkipSource, existing?: Skip): View {
 export function readSkipReason(values: Values): string | undefined {
   const richText = values.reason?.value?.rich_text_value;
   return richText ? renderRichText(richText).trim() || undefined : undefined;
+}
+
+export const BUZZ_FORM = "reminder_buzz_form";
+
+/** `rich_text_input` has no `max_length` either, so this is re-checked on submit. */
+export const MAX_UPDATE_LENGTH = 3000;
+
+export function buzzModal(source: SkipSource, existing?: Report): View {
+  return {
+    type: "modal",
+    callback_id: BUZZ_FORM,
+    private_metadata: JSON.stringify(source),
+    title: { type: "plain_text", text: existing ? "Your update" : "Buzz in" },
+    submit: { type: "plain_text", text: existing ? "Save" : "Buzz in" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "update",
+        label: { type: "plain_text", text: "Update" },
+        hint: { type: "plain_text", text: "Posted in the reminder's thread." },
+        element: {
+          type: "rich_text_input",
+          action_id: "value",
+          placeholder: { type: "plain_text", text: "Yesterday: … Today: …" },
+          ...(existing ? { initial_value: parseRichText(existing.body) } : {}),
+        },
+      },
+      {
+        type: "input",
+        block_id: "sync",
+        optional: true,
+        label: { type: "plain_text", text: "Need to sync with" },
+        hint: { type: "plain_text", text: "They get mentioned in your update." },
+        element: {
+          type: "multi_users_select",
+          action_id: "value",
+          ...(existing && existing.syncWith.length > 0 ? { initial_users: existing.syncWith } : {}),
+        },
+      },
+    ],
+  };
+}
+
+export function readBuzz(values: Values): { body: string | undefined; syncWith: string[] } {
+  const richText = values.update?.value?.rich_text_value;
+  return {
+    body: richText ? renderRichText(richText).trim() || undefined : undefined,
+    syncWith: values.sync?.value?.selected_users ?? [],
+  };
 }

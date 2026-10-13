@@ -14,6 +14,7 @@ import {
   getFireForDate,
   getHoliday,
   listHosts,
+  listReports,
   listSkips,
   recordFire,
   setJoinMessageTs,
@@ -60,6 +61,7 @@ export async function fireReminder(
     ...reminderBody(reminder, which),
     host,
     skips: [],
+    reporters: [],
     skippable: roster.length > 0,
   };
 
@@ -107,6 +109,7 @@ export async function postJoin(reminder: Reminder, client: WebClient): Promise<F
     host: fire.hostUserId ?? undefined,
     hostUnavailable: hasRoster && !fire.hostUserId,
     skips: listSkips(fire.id),
+    reporters: listReports(fire.id).map((report) => report.userId),
     skippable: hasRoster,
   };
 

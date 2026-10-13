@@ -2,6 +2,7 @@ import type { KnownBlock } from "@slack/web-api";
 import type { BodyFormat, Reminder, Skip } from "../domain/types.js";
 
 export const SKIP_ACTION = "reminder_skip";
+export const BUZZ_ACTION = "reminder_buzz";
 export const APPROVE_ACTION = "remind_approve";
 export const REJECT_ACTION = "remind_reject";
 export const NEW_REMINDER_ACTION = "remind_new";
@@ -19,6 +20,7 @@ export interface ReminderPost {
   host?: string;
   hostUnavailable?: boolean;
   skips: readonly Skip[];
+  reporters: readonly string[];
   skippable: boolean;
 }
 
@@ -76,6 +78,10 @@ function skipList(skips: readonly Skip[]): string {
   return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
 }
 
+function reporterList(reporters: readonly string[]): string {
+  return ["🐝 Buzzed in:", ...reporters.map((userId) => `• ${mention(userId)}`)].join("\n");
+}
+
 /** Each dialect goes through the block that reads it as written. Never convert. */
 function bodyBlock(post: ReminderPost): KnownBlock {
   return post.bodyFormat === "mrkdwn"
@@ -91,6 +97,7 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const context: string[] = [`⚙️ \`${post.code}\``];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
+  if (post.reporters.length > 0) context.push(reporterList(post.reporters));
   if (post.skips.length > 0) context.push(skipList(post.skips));
 
   blocks.push({
@@ -102,6 +109,11 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
     blocks.push({
       type: "actions",
       elements: [
+        {
+          type: "button",
+          action_id: BUZZ_ACTION,
+          text: { type: "plain_text", text: "🐝 Buzz in" },
+        },
         {
           type: "button",
           action_id: SKIP_ACTION,

@@ -226,6 +226,15 @@ const migrations: string[] = [
   `DROP INDEX idx_reminder_fires_reminder_fired_on`,
   `CREATE UNIQUE INDEX idx_reminder_fires_reminder_fired_on
      ON reminder_fires(reminder_id, fired_on)`,
+  `CREATE TABLE reminder_reports (
+     fire_id    INTEGER NOT NULL REFERENCES reminder_fires(id) ON DELETE CASCADE,
+     user_id    TEXT    NOT NULL,
+     created_at TEXT    NOT NULL,
+     body       TEXT    NOT NULL,
+     sync_with  TEXT    NOT NULL DEFAULT '',
+     notice_ts  TEXT,
+     PRIMARY KEY (fire_id, user_id)
+   )`,
 ];
 
 export function initDb(): void {
