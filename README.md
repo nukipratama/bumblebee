@@ -268,7 +268,9 @@ and an optional **Need to sync with** picker.
 ```
 ⚙️ `standup`
 🎙 Host: @alice
-🐝 Buzzed in: @bob @dana
+🐝 Buzzed in:
+• @bob
+• @dana
 ```
 
 - **The update goes in the thread**, with a `🤝 Needs sync with @carl` line that mentions whoever

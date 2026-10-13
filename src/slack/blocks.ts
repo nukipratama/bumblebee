@@ -78,6 +78,10 @@ function skipList(skips: readonly Skip[]): string {
   return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
 }
 
+function reporterList(reporters: readonly string[]): string {
+  return ["🐝 Buzzed in:", ...reporters.map((userId) => `• ${mention(userId)}`)].join("\n");
+}
+
 /** Each dialect goes through the block that reads it as written. Never convert. */
 function bodyBlock(post: ReminderPost): KnownBlock {
   return post.bodyFormat === "mrkdwn"
@@ -93,7 +97,7 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const context: string[] = [`⚙️ \`${post.code}\``];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
-  if (post.reporters.length > 0) context.push(`🐝 Buzzed in: ${post.reporters.map(mention).join(" ")}`);
+  if (post.reporters.length > 0) context.push(reporterList(post.reporters));
   if (post.skips.length > 0) context.push(skipList(post.skips));
 
   blocks.push({

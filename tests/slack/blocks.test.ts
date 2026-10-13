@@ -113,11 +113,11 @@ describe("reminderBlocks — host and skips", () => {
     assert.equal(text, "🙅 Skip:\n• <@U_BOB>\n• <@U_DANA>");
   });
 
-  it("lists who buzzed in on one line, ahead of the skips", () => {
+  it("lists who buzzed in one per line, like the skips and ahead of them", () => {
     const text = hostContext(
       reminderBlocks(post({ reporters: ["U_ALICE", "U_CARL"], skips: [skip("U_BOB")] })),
     );
-    assert.equal(text, "🐝 Buzzed in: <@U_ALICE> <@U_CARL>\n🙅 Skip:\n• <@U_BOB>");
+    assert.equal(text, "🐝 Buzzed in:\n• <@U_ALICE>\n• <@U_CARL>\n🙅 Skip:\n• <@U_BOB>");
   });
 
   it("shows a reason beside whoever gave one, and nothing extra for whoever did not", () => {
