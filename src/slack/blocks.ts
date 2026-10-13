@@ -2,6 +2,7 @@ import type { KnownBlock } from "@slack/web-api";
 import type { BodyFormat, Reminder, Skip } from "../domain/types.js";
 
 export const SKIP_ACTION = "reminder_skip";
+export const BUZZ_ACTION = "reminder_buzz";
 export const APPROVE_ACTION = "remind_approve";
 export const REJECT_ACTION = "remind_reject";
 export const NEW_REMINDER_ACTION = "remind_new";
@@ -19,6 +20,7 @@ export interface ReminderPost {
   host?: string;
   hostUnavailable?: boolean;
   skips: readonly Skip[];
+  reporters: readonly string[];
   skippable: boolean;
 }
 
@@ -91,6 +93,7 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const context: string[] = [`⚙️ \`${post.code}\``];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
+  if (post.reporters.length > 0) context.push(`🐝 Buzzed in: ${post.reporters.map(mention).join(" ")}`);
   if (post.skips.length > 0) context.push(skipList(post.skips));
 
   blocks.push({
@@ -102,6 +105,11 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
     blocks.push({
       type: "actions",
       elements: [
+        {
+          type: "button",
+          action_id: BUZZ_ACTION,
+          text: { type: "plain_text", text: "🐝 Buzz in" },
+        },
         {
           type: "button",
           action_id: SKIP_ACTION,

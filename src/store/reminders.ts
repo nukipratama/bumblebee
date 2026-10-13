@@ -6,6 +6,7 @@ import type {
   NewFire,
   NewReminder,
   Reminder,
+  Report,
   Skip,
 } from "../domain/types.js";
 import { stmt, transaction } from "./database.js";
@@ -35,6 +36,11 @@ const FIRE_COLUMNS = `id,
 
 const SKIP_COLUMNS = `user_id AS userId,
          reason`;
+
+const REPORT_COLUMNS = `user_id   AS userId,
+         body,
+         sync_with AS syncWith,
+         notice_ts AS noticeTs`;
 
 const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
@@ -297,6 +303,53 @@ export function listSkips(fireId: number): Skip[] {
   return stmt(
     `SELECT ${SKIP_COLUMNS} FROM reminder_skips WHERE fire_id = ? ORDER BY created_at, user_id`,
   ).all(fireId) as unknown as Skip[];
+}
+
+interface ReportRow extends Omit<Report, "syncWith"> {
+  syncWith: string;
+}
+
+const toReport = (row: ReportRow): Report => ({
+  userId: row.userId,
+  body: row.body,
+  syncWith: row.syncWith ? row.syncWith.split(" ") : [],
+  noticeTs: row.noticeTs,
+});
+
+export function getReport(fireId: number, userId: string): Report | undefined {
+  const row = stmt(
+    `SELECT ${REPORT_COLUMNS} FROM reminder_reports WHERE fire_id = ? AND user_id = ?`,
+  ).get(fireId, userId) as unknown as ReportRow | undefined;
+  return row && toReport(row);
+}
+
+/** `created_at` is left alone on conflict, for the same reason as `addSkip`. */
+export function upsertReport(
+  fireId: number,
+  userId: string,
+  body: string,
+  syncWith: readonly string[],
+): void {
+  stmt(
+    `INSERT INTO reminder_reports (fire_id, user_id, created_at, body, sync_with)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (fire_id, user_id) DO UPDATE SET body = excluded.body, sync_with = excluded.sync_with`,
+  ).run(fireId, userId, new Date().toISOString(), body, syncWith.join(" "));
+}
+
+export function setReportNotice(fireId: number, userId: string, noticeTs: string): void {
+  stmt("UPDATE reminder_reports SET notice_ts = ? WHERE fire_id = ? AND user_id = ?").run(
+    noticeTs,
+    fireId,
+    userId,
+  );
+}
+
+export function listReports(fireId: number): Report[] {
+  const rows = stmt(
+    `SELECT ${REPORT_COLUMNS} FROM reminder_reports WHERE fire_id = ? ORDER BY created_at, user_id`,
+  ).all(fireId) as unknown as ReportRow[];
+  return rows.map(toReport);
 }
 
 export function lastHostedOn(reminderId: number): Map<string, string> {

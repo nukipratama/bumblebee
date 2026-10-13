@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   EDIT_REMINDER_ACTION,
   HOST_CURRENT_ACTION,
+  BUZZ_ACTION,
   NEW_REMINDER_ACTION,
   REMOVE_REMINDER_ACTION,
   RUN_REMINDER_ACTION,
@@ -22,6 +23,7 @@ function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
     body: "Standup time!",
     bodyFormat: "markdown",
     skips: [],
+    reporters: [],
     skippable: false,
     ...overrides,
   };
@@ -111,6 +113,13 @@ describe("reminderBlocks — host and skips", () => {
     assert.equal(text, "🙅 Skip:\n• <@U_BOB>\n• <@U_DANA>");
   });
 
+  it("lists who buzzed in on one line, ahead of the skips", () => {
+    const text = hostContext(
+      reminderBlocks(post({ reporters: ["U_ALICE", "U_CARL"], skips: [skip("U_BOB")] })),
+    );
+    assert.equal(text, "🐝 Buzzed in: <@U_ALICE> <@U_CARL>\n🙅 Skip:\n• <@U_BOB>");
+  });
+
   it("shows a reason beside whoever gave one, and nothing extra for whoever did not", () => {
     const text = hostContext(
       reminderBlocks(post({ skips: [skip("U_BOB", "dentist"), skip("U_DANA")] })),
@@ -187,6 +196,11 @@ describe("reminderBlocks — skip button", () => {
     const actions = blocks.find((block) => block.type === "actions");
     assert.ok(actions && actions.type === "actions");
     assert.deepEqual(actions.elements, [
+      {
+        type: "button",
+        action_id: BUZZ_ACTION,
+        text: { type: "plain_text", text: "🐝 Buzz in" },
+      },
       {
         type: "button",
         action_id: SKIP_ACTION,

@@ -1,9 +1,9 @@
 import type { WebClient } from "@slack/web-api";
 import type { Fire, Reminder } from "../domain/types.js";
-import { listHosts, listSkips } from "../store/reminders.js";
+import { listHosts, listReports, listSkips } from "../store/reminders.js";
 import { fallbackText, type PostBody, reminderBlocks, reminderBody } from "./blocks.js";
 
-/** Both posts carry the button and the same skip list, so both are rewritten. */
+/** Both posts carry the buttons and the same lists, so both are rewritten. */
 export function postsOf(fire: Fire, reminder: Reminder): { ts: string; which: PostBody }[] {
   const posts: { ts: string; which: PostBody }[] = [];
   if (fire.messageTs) {
@@ -22,6 +22,7 @@ export async function repost(
 ): Promise<void> {
   const hasRoster = listHosts(reminder.id).length > 0;
   const skips = listSkips(fire.id);
+  const reporters = listReports(fire.id).map((report) => report.userId);
 
   for (const { ts, which } of postsOf(fire, reminder)) {
     const post = {
@@ -32,6 +33,7 @@ export async function repost(
       // a handover found nobody available.
       hostUnavailable: hasRoster && !fire.hostUserId,
       skips,
+      reporters,
       skippable: hasRoster,
     };
 

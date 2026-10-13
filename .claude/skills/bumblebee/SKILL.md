@@ -50,6 +50,7 @@ src/
         ├── status.ts           # /bee-status
         ├── shortcut.ts         # "Make this a reminder" message shortcut → opens the form
         ├── skip.ts             # Skip me button + reason dialog — host handover, skip list
+        ├── buzz.ts             # Buzz in button + update dialog — thread reply, never touches hosting
         └── remind/
             ├── index.ts        # register + subcommand dispatch + Approve/Reject handlers
             ├── modal.ts        # the form's view handler + the New/Edit buttons
@@ -152,7 +153,7 @@ tests/                          # mirrors the src/ path of what it covers
   each post's body comes from `reminderBody(reminder, which)` — repainting both with one body would
   overwrite the heads-up. The handover window runs to **meeting time + 30 min**, not fire + 30, which
   collapses to the old rule at `lead_minutes = 0`.
-- Action IDs in `slack/blocks.ts` (`reminder_skip`, `remind_approve`, `remind_reject`, `remind_new`,
+- Action IDs in `slack/blocks.ts` (`reminder_skip`, `reminder_buzz`, `remind_approve`, `remind_reject`, `remind_new`,
   `remind_edit`, `remind_run`, `remind_remove`) are baked into
   messages already posted in Slack. Renaming one breaks every live button.
 - **A reminder's message has a dialect.** `reminders.body_format` is `mrkdwn` for everything written

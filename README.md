@@ -25,6 +25,7 @@ no redeploy.
 | **Host rotation** | The **Host rotation** field on the reminder form | Appends `🎙 Host: @someone` to each post, a different person each time, nobody twice per lap. |
 | **Heads-up** | The **Heads-up** field on the reminder form | Posts an early notice N minutes before, naming the host then — so a handover can happen before the meeting starts. |
 | **Skip me** | The button on a rotating reminder | Opens a dialog with an optional reason, shown on the post. The host hands over to the next person; anyone else is just listed as skipping. |
+| **🐝 Buzz in** | The button on a rotating reminder | Opens a dialog for your async update and who you need to sync with. Posts it in the thread and lists you on the post. Never touches hosting. |
 | **Holidays** | `/bee-remind holiday` → pick a date | A date that suppresses reminders in **every** channel. |
 | **Status** | `/bee-status` | Uptime line, this channel's reminder count, next fire and last scheduler tick, plus its Code Freeze repo count, recurring schedule, next fire and last run. |
 | **Code Freeze reports** | `/bee-cf-report` | Posts one message per configured repo with a button per squad (`All Merged` / `No MR`). Each post updates live as squads click, with a thread reply saying who clicked what. |
@@ -188,12 +189,12 @@ every reminder behaves by default.
 09:30   Heads Up at 10:25: Daily Standup      <- Heads-up = 55, Heads-up message
         ⚙️ `standup`
         🎙 Host: @alice
-        [ Skip me ]
+        [ 🐝 Buzz in ] [ Skip me ]
 
 10:25   https://meet.google.com/nkj-aamw-kzb  <- Time = 10:25, Message
         ⚙️ `standup`
         🎙 Host: @alice
-        [ Skip me ]
+        [ 🐝 Buzz in ] [ Skip me ]
 ```
 
 - **Time still means the meeting time.** The heads-up counts *back* from it, so setting one never
@@ -258,6 +259,23 @@ reason — which is **optional**: submit it empty and you're simply listed as sk
   your turn** — you go back into the lap, you just aren't up today. After 30 minutes only the
   *handover* is refused: the meeting has effectively happened, and rewriting who was responsible
   would revise history. Everyone else can still skip, with no time limit.
+
+### The `🐝 Buzz in` button
+
+For an async standup. It sits next to `Skip me` and opens a dialog with your **update** (required)
+and an optional **Need to sync with** picker.
+
+```
+⚙️ `standup`
+🎙 Host: @alice
+🐝 Buzzed in: @bob @dana
+```
+
+- **The update goes in the thread**, with a `🤝 Needs sync with @carl` line that mentions whoever
+  you picked. The post only lists who has buzzed in, so the host can see who has reported.
+- **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply.
+- **It never touches hosting.** Unlike `Skip me`, the host can buzz in and stays the host. The lap
+  and the skip list don't change either.
 - **Anyone already skipping is passed over**, so a handover never names a host who has said they
   won't be there. They keep their place in the lap — skipping costs nobody a turn. If everyone left
   in the lap has skipped, the post says `⚠️ Nobody available to host` rather than naming someone who
@@ -340,6 +358,7 @@ src/
         ├── status.ts           /bee-status
         ├── shortcut.ts         "Make this a reminder" → opens the form
         ├── skip.ts             the Skip me button and its reason dialog
+        ├── buzz.ts             the Buzz in button, its update dialog and thread reply
         ├── remind/             /bee-remind, split by subcommand family
         │   ├── index.ts        register + subcommand dispatch + Approve/Reject
         │   ├── modal.ts        the form's view handler + New/Edit buttons
@@ -485,6 +504,7 @@ says what a failure would mean.
 | 13b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
 | 13c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
 | 13d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
+| 13e | **🐝 Buzz in** as the host → an update, pick someone to sync with → **Buzz in**. Click again → edit → **Save** | Host unchanged; `🐝 Buzzed in:` names you; one thread reply that mentions the picked person, edited in place the second time | Host changed → Buzz in is going through the skip path; a second reply → `notice_ts` isn't being stored |
 | 14 | `/bee-remind add foo` | Says where `add` went | — |
 | 15 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 
