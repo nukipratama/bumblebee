@@ -79,6 +79,8 @@ export interface Report {
   syncWith: string[];
   /** The thread reply carrying `body`, so an edit rewrites it instead of piling up. */
   noticeTs: string | null;
+  /** The post whose thread carries that reply: a fire has two posts, either can be clicked. */
+  noticeThreadTs: string | null;
 }
 
 export interface NewFire {

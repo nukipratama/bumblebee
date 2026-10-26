@@ -349,20 +349,21 @@ describe("reports", () => {
     const fireId = fireWithReports();
 
     upsertReport(fireId, "U_A", "shipped it", ["U_B", "U_C"]);
-    setReportNotice(fireId, "U_A", "555.6");
+    setReportNotice(fireId, "U_A", "555.6", "555.5");
 
     assert.deepEqual({ ...getReport(fireId, "U_A") }, {
       userId: "U_A",
       body: "shipped it",
       syncWith: ["U_B", "U_C"],
       noticeTs: "555.6",
+      noticeThreadTs: "555.5",
     });
   });
 
   it("rewrites an edit in place, keeping the thread reply and the place in the list", () => {
     const fireId = fireWithReports();
     upsertReport(fireId, "U_A", "first", ["U_B"]);
-    setReportNotice(fireId, "U_A", "555.6");
+    setReportNotice(fireId, "U_A", "555.6", "555.5");
     upsertReport(fireId, "U_Z", "later", []);
 
     upsertReport(fireId, "U_A", "edited", []);

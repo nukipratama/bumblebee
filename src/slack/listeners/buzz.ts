@@ -38,7 +38,7 @@ export interface BuzzNotice {
   text: string;
   noticeTs: string | null;
   /** Editing the reply notifies nobody, so people newly added to sync-with get their own new reply. */
-  syncPing: string | null;
+  syncPing: { text: string; threadTs: string | null } | null;
 }
 
 /** Writes only the report: hosting, the lap and skips are left alone whoever clicks. */
@@ -50,7 +50,13 @@ export function recordBuzz({ fire, reminder, clicker, clickerName, body, syncWit
   return {
     text: buzzNotice(reminder, clickerName, body, syncWith),
     noticeTs,
-    syncPing: added.length > 0 ? `🤝 ${escapeMrkdwn(clickerName)} needs sync with ${mentions(added)}` : null,
+    syncPing:
+      added.length > 0
+        ? {
+            text: `🤝 ${escapeMrkdwn(clickerName)} needs sync with ${mentions(added)}`,
+            threadTs: previous?.noticeThreadTs ?? null,
+          }
+        : null,
   };
 }
 
@@ -127,9 +133,6 @@ async function settle(
   try {
     if (notice.noticeTs) {
       await client.chat.update({ channel: source.channelId, ts: notice.noticeTs, text: notice.text });
-      if (notice.syncPing) {
-        await client.chat.postMessage({ channel: source.channelId, thread_ts: source.messageTs, text: notice.syncPing });
-      }
     } else {
       const posted = await client.chat.postMessage({
         channel: source.channelId,
@@ -138,7 +141,7 @@ async function settle(
         unfurl_links: false,
         unfurl_media: false,
       });
-      if (posted.ts) setReportNotice(fire.id, clicker, posted.ts);
+      if (posted.ts) setReportNotice(fire.id, clicker, posted.ts, source.messageTs);
     }
   } catch (error) {
     logger.error("posting the update in the thread failed", error);
@@ -149,6 +152,19 @@ async function settle(
         text: "I recorded your update, but posting it in the thread failed.",
       })
       .catch(() => undefined);
+  }
+
+  if (notice.syncPing) {
+    try {
+      await client.chat.postMessage({
+        channel: source.channelId,
+        // Replies posted before the thread was stored fall back to the clicked post's thread.
+        thread_ts: notice.syncPing.threadTs ?? source.messageTs,
+        text: notice.syncPing.text,
+      });
+    } catch (error) {
+      logger.error("pinging the people added to sync-with failed", error);
+    }
   }
 
   try {

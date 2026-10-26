@@ -68,17 +68,18 @@ describe("buzzing in", () => {
     assert.equal(notice.text, `🐝 &lt;!here&gt; &amp; co buzzed in on \`${reminder.code}\`:\nok`);
   });
 
-  it("pings only the people an edit adds to sync-with", () => {
-    const { fire, reminder } = firedReminder("1700000000.0003");
+  it("pings only the people an edit adds to sync-with, in the thread the update lives in", () => {
+    const headsUpTs = "1700000000.0003";
+    const { fire, reminder } = firedReminder(headsUpTs);
     const buzz = (syncWith: string[]) =>
       recordBuzz({ fire, reminder, clicker: "U_A", clickerName: "Alice", body: "ok", syncWith });
 
     assert.equal(buzz(["U_D"]).syncPing, null);
-    setReportNotice(fire.id, "U_A", "1700000000.0099");
+    setReportNotice(fire.id, "U_A", "1700000000.0099", headsUpTs);
 
     const added = buzz(["U_D", "U_E"]);
     assert.equal(added.noticeTs, "1700000000.0099");
-    assert.equal(added.syncPing, "🤝 Alice needs sync with <@U_E>");
+    assert.deepEqual(added.syncPing, { text: "🤝 Alice needs sync with <@U_E>", threadTs: headsUpTs });
     assert.equal(buzz(["U_D", "U_E"]).syncPing, null);
     assert.equal(buzz([]).syncPing, null);
   });
