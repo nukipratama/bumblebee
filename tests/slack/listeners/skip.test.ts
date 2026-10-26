@@ -192,7 +192,8 @@ describe("the host hands over", () => {
     const outcome = applySkip({
       fire: getFireByMessageTs(MESSAGE_TS)!,
       reminder: stored,
-      clicker: "U_A", clickerName: "Alice",
+      clicker: "U_A",
+      clickerName: "Alice",
       now: MEETING,
     });
 
@@ -207,7 +208,8 @@ describe("the host hands over", () => {
     const outcome = applySkip({
       fire,
       reminder,
-      clicker: "U_A", clickerName: "Alice",
+      clicker: "U_A",
+      clickerName: "Alice",
       reason: "sick",
       now: MEETING,
     });
@@ -255,7 +257,8 @@ describe("the handover window", () => {
     const outcome = applySkip({
       fire,
       reminder,
-      clicker: "U_B", clickerName: "Bob",
+      clicker: "U_B",
+      clickerName: "Bob",
       reason: "sick",
       now: fromMeeting(300),
     });
@@ -323,7 +326,8 @@ describe("anyone who is not the host", () => {
     const again = applySkip({
       fire: getFireByMessageTs(MESSAGE_TS)!,
       reminder,
-      clicker: "U_A", clickerName: "Alice",
+      clicker: "U_A",
+      clickerName: "Alice",
       reason: "sick, back Thursday",
       now: MEETING,
     });

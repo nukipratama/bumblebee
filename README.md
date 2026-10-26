@@ -249,15 +249,15 @@ reason — which is **optional**: submit it empty and you're simply listed as sk
 ```
 
 - **The reason sits on the post**, one line per person, in full. Leave the box empty and you're
-  listed on your own. Each click also posts a thread reply, `🙅 *Bob* is skipping \`standup\` - sick`,
+  listed on your own. Each click also posts a thread reply, `` 🙅 *Bob* is skipping `standup` - sick ``,
   that names you in bold rather than mentioning you, so it doesn't ping you.
 - **Clicking again reopens the dialog prefilled.** Editing rewrites the line; clearing the box
   leaves you listed with no reason.
 - **If you're the host**, and it's **within 30 minutes of the meeting time**, the next person in the
   lap takes over. Both posts rewrite themselves to name them, add you to `🔕 Skip:`, and a thread
-  reply mentions them — the one thing that does notify, because someone just picked up the job. You're
-  named in bold, not mentioned. **You keep
-  your turn** — you go back into the lap, you just aren't up today. After 30 minutes only the
+  reply mentions them — the one thing that does notify, because someone just picked up the job.
+  You're named in bold, not mentioned. **You keep your turn** — you go back into the lap, you just
+  aren't up today. After 30 minutes only the
   *handover* is refused: the meeting has effectively happened, and rewriting who was responsible
   would revise history. Everyone else can still skip, with no time limit.
 
