@@ -46,6 +46,7 @@ function hostContext(blocks: ReturnType<typeof reminderBlocks>): string | undefi
 }
 
 const skip = (userId: string, reason: string | null = null) => ({ userId, reason });
+const reporter = (userId: string, syncWith: string[] = []) => ({ userId, syncWith });
 
 describe("reminderBlocks — body dialect", () => {
   it("renders a Markdown body through a markdown block", () => {
@@ -115,9 +116,16 @@ describe("reminderBlocks — host and skips", () => {
 
   it("lists who buzzed in one per line, like the skips and ahead of them", () => {
     const text = hostContext(
-      reminderBlocks(post({ reporters: ["U_ALICE", "U_CARL"], skips: [skip("U_BOB")] })),
+      reminderBlocks(post({ reporters: [reporter("U_ALICE"), reporter("U_CARL")], skips: [skip("U_BOB")] })),
     );
     assert.equal(text, "🐝 Buzzed in:\n• <@U_ALICE>\n• <@U_CARL>\n🙅 Skip:\n• <@U_BOB>");
+  });
+
+  it("shows who each buzzer needs to sync with beside them", () => {
+    const text = hostContext(
+      reminderBlocks(post({ reporters: [reporter("U_ALICE"), reporter("U_BOB", ["U_DINA", "U_EKA"])] })),
+    );
+    assert.equal(text, "🐝 Buzzed in:\n• <@U_ALICE>\n• <@U_BOB> 🤝 <@U_DINA> <@U_EKA>");
   });
 
   it("shows a reason beside whoever gave one, and nothing extra for whoever did not", () => {

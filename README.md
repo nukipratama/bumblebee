@@ -269,13 +269,17 @@ and an optional **Need to sync with** picker.
 ⚙️ `standup`
 🎙 Host: @alice
 🐝 Buzzed in:
-• @bob
+• @bob 🤝 @carl
 • @dana
 ```
 
-- **The update goes in the thread**, with a `🤝 Needs sync with @carl` line that mentions whoever
-  you picked. The post only lists who has buzzed in, so the host can see who has reported.
-- **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply.
+- **The update goes in the thread** under your name, written as plain text so it doesn't ping you.
+  A `🤝 Needs sync with @carl` line mentions whoever you picked, and pings them. The post lists who
+  has buzzed in and who each of them needs to sync with, so the host can see who has reported.
+- **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply. An edit
+  pings nobody, so anyone you add to sync-with gets a short new reply that mentions only them.
+- **Nobody gets pinged twice.** The post only changes through edits, and so does the meeting post
+  of a heads-up reminder once its buzzers are filled in.
 - **It never touches hosting.** Unlike `Skip me`, the host can buzz in and stays the host. The lap
   and the skip list don't change either.
 - **Anyone already skipping is passed over**, so a handover never names a host who has said they
@@ -506,7 +510,7 @@ says what a failure would mean.
 | 13b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
 | 13c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
 | 13d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
-| 13e | **🐝 Buzz in** as the host → an update, pick someone to sync with → **Buzz in**. Click again → edit → **Save** | Host unchanged; `🐝 Buzzed in:` names you; one thread reply that mentions the picked person, edited in place the second time | Host changed → Buzz in is going through the skip path; a second reply → `notice_ts` isn't being stored |
+| 13e | **🐝 Buzz in** as the host → an update, pick someone to sync with → **Buzz in**. Click again → edit → **Save** | Host unchanged; `🐝 Buzzed in:` names you; one thread reply that names you in plain text and mentions the picked person, edited in place the second time; adding a second person in the edit posts one short reply mentioning only them | Host changed → Buzz in is going through the skip path; a second reply → `notice_ts` isn't being stored |
 | 14 | `/bee-remind add foo` | Says where `add` went | — |
 | 15 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 
