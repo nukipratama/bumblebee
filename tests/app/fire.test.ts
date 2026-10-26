@@ -17,6 +17,7 @@ const {
   listHosts,
   replaceHosts,
   setFireHost,
+  upsertReport,
 } = await import("../../src/store/reminders.js");
 const { fireReminder, postJoin } = await import("../../src/app/fire.js");
 
@@ -328,6 +329,21 @@ describe("postJoin", () => {
     await postJoin(reminder, client);
 
     assert.equal(getFireByMessageTs("999.9")?.joinMessageTs, "999.9");
+  });
+
+  it("posts the meeting with no buzzers, then fills them in by an edit", async () => {
+    const reminder = seed(lead);
+    let next = 0;
+    const { client, posted, updated } = fakeClient(async () => ({ ts: `${++next}.1` }));
+    await fireReminder(reminder, client, "heads-up");
+    upsertReport(getFireByMessageTs("1.1")!.id, "U_B", "shipped it", ["U_D"]);
+
+    await postJoin(reminder, client);
+
+    assert.doesNotMatch(JSON.stringify(posted[1]!.blocks), /U_B/);
+    assert.equal(updated.length, 1);
+    assert.equal(updated[0]!.ts, "2.1");
+    assert.match(JSON.stringify(updated[0]!.blocks), /• <@U_B> 🤝 <@U_D>/);
   });
 
   it("fires outright when the lead time was missed, so nobody loses their turn", async () => {
