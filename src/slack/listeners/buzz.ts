@@ -2,23 +2,23 @@ import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import type { Fire, Reminder } from "../../domain/types.js";
 import { getFireByMessageTs, getReminderById, getReport, setReportNotice, upsertReport } from "../../store/reminders.js";
-import { BUZZ_ACTION, escapeMrkdwn } from "../blocks.js";
+import { BUZZ_ACTION } from "../blocks.js";
 import { BUZZ_FORM, MAX_UPDATE_LENGTH, type SkipSource, buzzModal, readBuzz } from "../modals.js";
 import { resolveDisplayNames } from "../names.js";
 import { repost } from "../repost.js";
+import { boldName } from "../text.js";
 
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
 
 const mentions = (userIds: readonly string[]): string => userIds.map((userId) => `<@${userId}>`).join(" ");
 
-/** The buzzer is named, not mentioned: a new message's mention would ping them about their own update. */
 export function buzzNotice(
   reminder: Reminder,
   clickerName: string,
   body: string,
   syncWith: readonly string[],
 ): string {
-  const lines = [`🐝 ${escapeMrkdwn(clickerName)} buzzed in on \`${reminder.code}\`:`, body];
+  const lines = [`🐝 ${boldName(clickerName)} buzzed in on \`${reminder.code}\`:`, body];
   if (syncWith.length > 0) {
     lines.push(`🤝 Needs sync with ${mentions(syncWith)}`);
   }
@@ -53,7 +53,7 @@ export function recordBuzz({ fire, reminder, clicker, clickerName, body, syncWit
     syncPing:
       added.length > 0
         ? {
-            text: `🤝 ${escapeMrkdwn(clickerName)} needs sync with ${mentions(added)}`,
+            text: `🤝 ${boldName(clickerName)} needs sync with ${mentions(added)}`,
             threadTs: previous?.noticeThreadTs ?? null,
           }
         : null,

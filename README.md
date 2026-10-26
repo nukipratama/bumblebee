@@ -249,13 +249,14 @@ reason — which is **optional**: submit it empty and you're simply listed as sk
 ```
 
 - **The reason sits on the post**, one line per person, in full. Leave the box empty and you're
-  listed on your own. A reason is never posted as a thread reply, so it doesn't notify anyone — it's
-  a record, not an announcement.
+  listed on your own. Each click also posts a thread reply, `🙅 *Bob* is skipping \`standup\` - sick`,
+  that names you in bold rather than mentioning you, so it doesn't ping you.
 - **Clicking again reopens the dialog prefilled.** Editing rewrites the line; clearing the box
   leaves you listed with no reason.
 - **If you're the host**, and it's **within 30 minutes of the meeting time**, the next person in the
   lap takes over. Both posts rewrite themselves to name them, add you to `🔕 Skip:`, and a thread
-  reply says so — the one thing that does notify, because someone just picked up the job. **You keep
+  reply mentions them — the one thing that does notify, because someone just picked up the job. You're
+  named in bold, not mentioned. **You keep
   your turn** — you go back into the lap, you just aren't up today. After 30 minutes only the
   *handover* is refused: the meeting has effectively happened, and rewriting who was responsible
   would revise history. Everyone else can still skip, with no time limit.
@@ -273,7 +274,7 @@ and an optional **Need to sync with** picker.
 • @dana
 ```
 
-- **The update goes in the thread** under your name, written as plain text so it doesn't ping you.
+- **The update goes in the thread** under your name in bold, written as text so it doesn't ping you.
   A `🤝 Needs sync with @carl` line mentions whoever you picked, and pings them. The post lists who
   has buzzed in and who each of them needs to sync with, so the host can see who has reported.
 - **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply. An edit
@@ -507,10 +508,10 @@ says what a failure would mean.
 | 11 | `/bee-remind holiday` → pick a date → **Approve**, then **Remove** → **Approve** | Added, then removed | `datepicker` wiring |
 | 12 | Post a message with `*bold*` and a real `@mention` → ⋮ → **Make this a reminder** → **Create** | Confirmation threaded on it *and* in-channel; **Run now** posts it byte-identical | Asterisks changed meaning → the body-format rule broke. No dialog at all → missing `channels:history` / `groups:history` |
 | 13 | Any fired post | Leads with `⚙️ code` in grey, and a link in the body shows **no preview card** | — |
-| 13b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line | A thread reply instead → the reason is still going to the thread |
+| 13b | **Skip me** on a fired post → a reason → **Skip**. Click again | Listed under `🔕 Skip:` on its own line **with the reason**; second click opens **prefilled** and rewrites that line; each click adds a thread reply naming you in bold, with no ping for you | A notification for your own skip → the thread reply is mentioning the clicker again |
 | 13c | **Edit** a reminder → **Heads-up** `2`, a heads-up message, time two minutes out → **Save** | Two posts: the heads-up, then the message. Both name the same host, both carry `Skip me` | Only one post → the tick isn't matching the lead time |
 | 13d | **Skip me** on the *heads-up* while the host, before the meeting time | Handover accepted; **both** posts rewrite to the replacement | Refused → the window is still measured from the fire, not the meeting |
-| 13e | **🐝 Buzz in** as the host → an update, pick someone to sync with → **Buzz in**. Click again → edit → **Save** | Host unchanged; `🐝 Buzzed in:` names you; one thread reply that names you in plain text and mentions the picked person, edited in place the second time; adding a second person in the edit posts one short reply mentioning only them | Host changed → Buzz in is going through the skip path; a second reply → `notice_ts` isn't being stored |
+| 13e | **🐝 Buzz in** as the host → an update, pick someone to sync with → **Buzz in**. Click again → edit → **Save** | Host unchanged; `🐝 Buzzed in:` names you; one thread reply that names you in bold text and mentions the picked person, edited in place the second time; adding a second person in the edit posts one short reply mentioning only them | Host changed → Buzz in is going through the skip path; a second reply → `notice_ts` isn't being stored |
 | 14 | `/bee-remind add foo` | Says where `add` went | — |
 | 15 | **Remove** → **Approve**, then `/bee-status` | Gone; status renders | — |
 
