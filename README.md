@@ -278,8 +278,8 @@ and an optional **Need to sync with** picker.
   has buzzed in and who each of them needs to sync with, so the host can see who has reported.
 - **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply. An edit
   pings nobody, so anyone you add to sync-with gets a short new reply that mentions only them.
-- **Nobody gets pinged twice.** The post only changes through edits, and so does the meeting post
-  of a heads-up reminder once its buzzers are filled in.
+- **Buzzing pings nobody but the people you pick.** The post's buzz list only changes through edits,
+  and a heads-up reminder's meeting post fills it in by an edit too.
 - **It never touches hosting.** Unlike `Skip me`, the host can buzz in and stays the host. The lap
   and the skip list don't change either.
 - **Anyone already skipping is passed over**, so a handover never names a host who has said they
