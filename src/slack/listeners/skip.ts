@@ -18,6 +18,8 @@ import {
 } from "../../store/reminders.js";
 import { SKIP_ACTION } from "../blocks.js";
 import { MAX_REASON_LENGTH, SKIP_FORM, type SkipSource, readSkipReason, skipModal } from "../modals.js";
+import { resolveDisplayNames } from "../names.js";
+import { boldName } from "../text.js";
 
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
 
@@ -42,6 +44,7 @@ function handOver(
   fire: Fire,
   reminder: Reminder,
   clicker: string,
+  clickerName: string,
   reason: string | null,
 ): SkipOutcome {
   const roster = listHosts(reminder.id);
@@ -75,7 +78,7 @@ function handOver(
     setFireTurn(fire.id, replacement ?? null);
   });
 
-  const suffix = keepsTurn ? ` — <@${clicker}> keeps their turn.` : ".";
+  const suffix = keepsTurn ? ` — ${boldName(clickerName)} keeps their turn.` : ".";
 
   if (!replacement) {
     return {
@@ -93,28 +96,29 @@ function handOver(
  * `reason` is already mrkdwn-ready (escaped text plus real mentions) by the time it
  * gets here — see `renderRichText` in `../rich-text.js` — so it's spliced in as-is.
  */
-function skipNotice(reminder: Reminder, clicker: string, reason: string | null): string {
+function skipNotice(reminder: Reminder, clickerName: string, reason: string | null): string {
   const suffix = reason ? ` - ${reason}` : "";
-  return `🙅 <@${clicker}> is skipping \`${reminder.code}\`${suffix}`;
+  return `🙅 ${boldName(clickerName)} is skipping \`${reminder.code}\`${suffix}`;
 }
 
 export interface SkipRequest {
   fire: Fire;
   reminder: Reminder;
   clicker: string;
+  clickerName: string;
   reason?: string;
   now: number;
 }
 
-export function applySkip({ fire, reminder, clicker, reason, now }: SkipRequest): SkipOutcome {
+export function applySkip({ fire, reminder, clicker, clickerName, reason, now }: SkipRequest): SkipOutcome {
   const tooLate = handoverTooLate(fire, reminder, clicker, now);
   if (tooLate) return { ephemeral: tooLate };
 
   const stored = reason ?? null;
-  if (fire.hostUserId === clicker) return handOver(fire, reminder, clicker, stored);
+  if (fire.hostUserId === clicker) return handOver(fire, reminder, clicker, clickerName, stored);
 
   addSkip(fire.id, clicker, stored);
-  return { announce: skipNotice(reminder, clicker, stored) };
+  return { announce: skipNotice(reminder, clickerName, stored) };
 }
 
 async function openSkipForm(body: BlockAction<ButtonAction>, client: WebClient): Promise<void> {
@@ -186,6 +190,8 @@ export function registerSkip(app: App): void {
 
     await ack();
 
+    const clickerName = (await resolveDisplayNames(client, logger, [clicker])).get(clicker) ?? clicker;
+
     // Re-read rather than reuse the pre-ack `fire`/`reminder`: ack() is a real
     // network round-trip, and a concurrent handover in that window would make
     // applySkip's handover-vs-plain-skip decision on stale data otherwise.
@@ -196,7 +202,7 @@ export function registerSkip(app: App): void {
       return;
     }
 
-    const outcome = applySkip({ fire: current, reminder: currentReminder, clicker, reason, now });
+    const outcome = applySkip({ fire: current, reminder: currentReminder, clicker, clickerName, reason, now });
     await settle(client, outcome, current, currentReminder, clicker, source, logger);
   });
 }

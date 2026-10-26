@@ -70,7 +70,7 @@ describe("the host hands over", () => {
   it("names the next person in the lap as the host of this occurrence", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
 
-    const outcome = applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    const outcome = applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
     assert.match(outcome.announce ?? "", /<@U_B> is hosting instead/);
@@ -79,7 +79,7 @@ describe("the host hands over", () => {
   it("moves the turn record to the replacement, so the clicker is not credited with hosting", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.turnUserId, "U_B");
   });
@@ -88,7 +88,7 @@ describe("the host hands over", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
     addSkip(fire.id, "U_B", null);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.turnUserId, null);
   });
@@ -96,7 +96,7 @@ describe("the host hands over", () => {
   it("marks the outgoing host as skipping", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.deepEqual(skipIds(fire.id), ["U_A"]);
   });
@@ -104,15 +104,16 @@ describe("the host hands over", () => {
   it("keeps their turn by sending them to the back of the lap", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    const outcome = applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_C", "U_A"]);
+    assert.equal(outcome.announce, "🔁 <@U_B> is hosting instead — *Alice* keeps their turn.");
   });
 
   it("draws a fresh lap that avoids them when this fire closed the lap", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A"]);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     const replacement = getFireByMessageTs(MESSAGE_TS)!.hostUserId;
     assert.notEqual(replacement, "U_A");
@@ -121,28 +122,28 @@ describe("the host hands over", () => {
 
   it("passes over someone who is already down as skipping", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_C");
   });
 
   it("leaves whoever was passed over in place, since skipping costs no turn", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_A"]);
   });
 
   it("leaves nobody hosting when everyone left in the lap has skipped", () => {
     const [fire, reminder] = fired(["U_A", "U_B", "U_C"], ["U_A", "U_B", "U_C"]);
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
-    applySkip({ fire, reminder, clicker: "U_C", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_C", clickerName: "Carl", now: MEETING });
 
-    const outcome = applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    const outcome = applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, null);
     assert.match(outcome.announce ?? "", /nobody is hosting/);
@@ -150,9 +151,9 @@ describe("the host hands over", () => {
 
   it("still marks the clicker skipping and keeps their turn when nobody can take over", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.deepEqual(skipIds(fire.id).sort(), ["U_A", "U_B"]);
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_A"]);
@@ -161,7 +162,7 @@ describe("the host hands over", () => {
   it("refuses when they are the only person on the rotation", () => {
     const [fire, reminder] = fired(["U_A"], ["U_A"]);
 
-    const outcome = applySkip({ fire, reminder, clicker: "U_A", now: MEETING });
+    const outcome = applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.match(outcome.ephemeral ?? "", /only person/);
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_A");
@@ -192,6 +193,7 @@ describe("the host hands over", () => {
       fire: getFireByMessageTs(MESSAGE_TS)!,
       reminder: stored,
       clicker: "U_A",
+      clickerName: "Alice",
       now: MEETING,
     });
 
@@ -207,6 +209,7 @@ describe("the host hands over", () => {
       fire,
       reminder,
       clicker: "U_A",
+      clickerName: "Alice",
       reason: "sick",
       now: MEETING,
     });
@@ -220,7 +223,7 @@ describe("the handover window", () => {
   it("is open right up to 30 minutes after the meeting", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_A", now: fromMeeting(29) });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: fromMeeting(29) });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
   });
@@ -228,7 +231,7 @@ describe("the handover window", () => {
   it("is closed after that, changing nothing at all", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    const outcome = applySkip({ fire, reminder, clicker: "U_A", now: fromMeeting(31) });
+    const outcome = applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: fromMeeting(31) });
 
     assert.match(outcome.ephemeral ?? "", /too late to hand over/);
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_A");
@@ -243,7 +246,7 @@ describe("the handover window", () => {
       preMessage: "Daily Standup",
     });
 
-    applySkip({ fire, reminder, clicker: "U_A", now: fromMeeting(-50) });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: fromMeeting(-50) });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
   });
@@ -255,6 +258,7 @@ describe("the handover window", () => {
       fire,
       reminder,
       clicker: "U_B",
+      clickerName: "Bob",
       reason: "sick",
       now: fromMeeting(300),
     });
@@ -278,7 +282,7 @@ describe("either post", () => {
     setJoinMessageTs(fire.id, JOIN_TS);
 
     const fromJoin = getFireByMessageTs(JOIN_TS)!;
-    applySkip({ fire: fromJoin, reminder, clicker: "U_A", now: MEETING });
+    applySkip({ fire: fromJoin, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_B");
   });
@@ -288,9 +292,10 @@ describe("anyone who is not the host", () => {
   it("marks a roster member skipping without touching the rotation", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    const outcome = applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    const outcome = applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    assert.match(outcome.announce ?? "", /<@U_B> is skipping/);
+    assert.match(outcome.announce ?? "", /^🙅 \*Bob\* is skipping /);
+    assert.doesNotMatch(outcome.announce ?? "", /<@U_B>/);
     assert.deepEqual(skipIds(fire.id), ["U_B"]);
     assert.equal(getFireByMessageTs(MESSAGE_TS)?.hostUserId, "U_A");
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B"]);
@@ -299,7 +304,7 @@ describe("anyone who is not the host", () => {
   it("marks someone who is not on the rotation at all", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_OUTSIDER", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_OUTSIDER", clickerName: "OUTSIDER", now: MEETING });
 
     assert.deepEqual(skipIds(fire.id), ["U_OUTSIDER"]);
     assert.equal(listHosts(reminder.id).length, 2);
@@ -307,21 +312,22 @@ describe("anyone who is not the host", () => {
 
   it("lists them once however many times they click", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
     assert.deepEqual(skipIds(fire.id), ["U_B"]);
   });
 
   it("lets the outgoing host edit their reason on a later click", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    applySkip({ fire, reminder, clicker: "U_A", reason: "sick", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", reason: "sick", now: MEETING });
 
     const again = applySkip({
       fire: getFireByMessageTs(MESSAGE_TS)!,
       reminder,
       clicker: "U_A",
+      clickerName: "Alice",
       reason: "sick, back Thursday",
       now: MEETING,
     });
@@ -336,7 +342,7 @@ describe("the reason", () => {
   it("is stored, so a reopened dialog and both posts can show it", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_B", reason: "sick", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "sick", now: MEETING });
 
     assert.equal(getSkip(fire.id, "U_B")?.reason, "sick");
     assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: "sick" }]);
@@ -345,25 +351,25 @@ describe("the reason", () => {
   it("is null when the box was left empty, leaving the person still listed", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
     assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: null }]);
   });
 
   it("is rewritten in place rather than added twice", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    applySkip({ fire, reminder, clicker: "U_B", reason: "sick", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "sick", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_B", reason: "on leave", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "on leave", now: MEETING });
 
     assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: "on leave" }]);
   });
 
   it("is cleared without dropping the skip itself", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    applySkip({ fire, reminder, clicker: "U_B", reason: "sick", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "sick", now: MEETING });
 
-    applySkip({ fire, reminder, clicker: "U_B", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
     assert.equal(getSkip(fire.id, "U_B")?.reason, null);
     assert.deepEqual(skipIds(fire.id), ["U_B"]);
@@ -372,7 +378,7 @@ describe("the reason", () => {
   it("is stored exactly as given, with escaping already done upstream by renderRichText", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
 
-    applySkip({ fire, reminder, clicker: "U_B", reason: "<!channel> & co", now: MEETING });
+    applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "<!channel> & co", now: MEETING });
 
     assert.equal(getSkip(fire.id, "U_B")?.reason, "<!channel> & co");
   });

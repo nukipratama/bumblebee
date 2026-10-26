@@ -57,7 +57,7 @@ describe("buzzing in", () => {
     assert.equal(notice.noticeTs, null);
     assert.equal(
       notice.text,
-      `🐝 Alice buzzed in on \`${stored.code}\`:\nshipped it\n🤝 Needs sync with <@U_B>`,
+      `🐝 *Alice* buzzed in on \`${stored.code}\`:\nshipped it\n🤝 Needs sync with <@U_B>`,
     );
     assert.equal(notice.syncPing, null);
   });
@@ -65,7 +65,7 @@ describe("buzzing in", () => {
   it("names the buzzer as escaped text, so a name can't turn into a mention", () => {
     const { fire, reminder } = firedReminder("1700000000.0002");
     const notice = recordBuzz({ fire, reminder, clicker: "U_A", clickerName: "<!here> & co", body: "ok", syncWith: [] });
-    assert.equal(notice.text, `🐝 &lt;!here&gt; &amp; co buzzed in on \`${reminder.code}\`:\nok`);
+    assert.equal(notice.text, `🐝 *&lt;!here&gt; &amp; co* buzzed in on \`${reminder.code}\`:\nok`);
   });
 
   it("pings only the people an edit adds to sync-with, in the thread the update lives in", () => {
@@ -79,7 +79,7 @@ describe("buzzing in", () => {
 
     const added = buzz(["U_D", "U_E"]);
     assert.equal(added.noticeTs, "1700000000.0099");
-    assert.deepEqual(added.syncPing, { text: "🤝 Alice needs sync with <@U_E>", threadTs: headsUpTs });
+    assert.deepEqual(added.syncPing, { text: "🤝 *Alice* needs sync with <@U_E>", threadTs: headsUpTs });
     assert.equal(buzz(["U_D", "U_E"]).syncPing, null);
     assert.equal(buzz([]).syncPing, null);
   });
