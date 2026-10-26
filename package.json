@@ -15,13 +15,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@slack/bolt": "^5.0.0",
-    "dotenv": "^17.0.0"
+    "@slack/bolt": "^5.1.0",
+    "dotenv": "^18.0.9"
   },
   "devDependencies": {
-    "@slack/types": "^3.0.0",
-    "@types/node": "^22.10.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "@slack/types": "^3.2.0",
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }
