@@ -109,7 +109,7 @@ export async function postJoin(reminder: Reminder, client: WebClient): Promise<F
     host: fire.hostUserId ?? undefined,
     hostUnavailable: hasRoster && !fire.hostUserId,
     skips: listSkips(fire.id),
-    reporters: listReports(fire.id).map((report) => report.userId),
+    reporters: [],
     skippable: hasRoster,
   };
 
@@ -121,7 +121,20 @@ export async function postJoin(reminder: Reminder, client: WebClient): Promise<F
     unfurl_media: false,
   });
 
-  if (posted.ts) setJoinMessageTs(fire.id, posted.ts);
+  if (posted.ts) {
+    setJoinMessageTs(fire.id, posted.ts);
+    // Buzzers are filled in by an edit, which notifies nobody; a fresh post would ping them all again.
+    const reporters = listReports(fire.id);
+    if (reporters.length > 0) {
+      const filled = { ...post, reporters };
+      await client.chat.update({
+        channel: reminder.channelId,
+        ts: posted.ts,
+        blocks: reminderBlocks(filled),
+        text: fallbackText(filled),
+      });
+    }
+  }
 
   return { posted: true, host: fire.hostUserId ?? undefined };
 }

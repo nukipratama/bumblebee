@@ -588,7 +588,7 @@ describe("plannedEdit — the heads-up", () => {
 
 describe("buzzModal", () => {
   const source = { channelId: "C1", messageTs: "1700000000.0001" };
-  const report: Report = { userId: "U_A", body: "shipped it", syncWith: ["U_B"], noticeTs: "1.2" };
+  const report: Report = { userId: "U_A", body: "shipped it", syncWith: ["U_B"], noticeTs: "1.2", noticeThreadTs: "1.1" };
 
   const modal = (existing?: Report) => buzzModal(source, existing) as ModalView;
   const input = (existing: Report | undefined, index: number) => modal(existing).blocks[index] as InputBlock;

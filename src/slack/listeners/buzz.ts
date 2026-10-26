@@ -2,22 +2,25 @@ import type { App, BlockAction, ButtonAction, Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import type { Fire, Reminder } from "../../domain/types.js";
 import { getFireByMessageTs, getReminderById, getReport, setReportNotice, upsertReport } from "../../store/reminders.js";
-import { BUZZ_ACTION } from "../blocks.js";
+import { BUZZ_ACTION, escapeMrkdwn } from "../blocks.js";
 import { BUZZ_FORM, MAX_UPDATE_LENGTH, type SkipSource, buzzModal, readBuzz } from "../modals.js";
+import { resolveDisplayNames } from "../names.js";
 import { repost } from "../repost.js";
 
 const REMINDER_GONE = "I can't find the reminder this belongs to — it may have been removed.";
 
-/** `body` is already mrkdwn-ready — see `renderRichText` in `../rich-text.js`. */
+const mentions = (userIds: readonly string[]): string => userIds.map((userId) => `<@${userId}>`).join(" ");
+
+/** The buzzer is named, not mentioned: a new message's mention would ping them about their own update. */
 export function buzzNotice(
   reminder: Reminder,
-  clicker: string,
+  clickerName: string,
   body: string,
   syncWith: readonly string[],
 ): string {
-  const lines = [`🐝 <@${clicker}> buzzed in on \`${reminder.code}\`:`, body];
+  const lines = [`🐝 ${escapeMrkdwn(clickerName)} buzzed in on \`${reminder.code}\`:`, body];
   if (syncWith.length > 0) {
-    lines.push(`🤝 Needs sync with ${syncWith.map((userId) => `<@${userId}>`).join(" ")}`);
+    lines.push(`🤝 Needs sync with ${mentions(syncWith)}`);
   }
   return lines.join("\n");
 }
@@ -26,19 +29,34 @@ export interface BuzzRequest {
   fire: Fire;
   reminder: Reminder;
   clicker: string;
+  clickerName: string;
   body: string;
   syncWith: readonly string[];
 }
 
-/** Writes only the report: hosting, the lap and skips are left alone whoever clicks. */
-export function recordBuzz({ fire, reminder, clicker, body, syncWith }: BuzzRequest): {
+export interface BuzzNotice {
   text: string;
   noticeTs: string | null;
-} {
+  /** Editing the reply notifies nobody, so people newly added to sync-with get their own new reply. */
+  syncPing: { text: string; threadTs: string | null } | null;
+}
+
+/** Writes only the report: hosting, the lap and skips are left alone whoever clicks. */
+export function recordBuzz({ fire, reminder, clicker, clickerName, body, syncWith }: BuzzRequest): BuzzNotice {
+  const previous = getReport(fire.id, clicker);
   upsertReport(fire.id, clicker, body, syncWith);
+  const noticeTs = previous?.noticeTs ?? null;
+  const added = noticeTs ? syncWith.filter((userId) => !previous?.syncWith.includes(userId)) : [];
   return {
-    text: buzzNotice(reminder, clicker, body, syncWith),
-    noticeTs: getReport(fire.id, clicker)?.noticeTs ?? null,
+    text: buzzNotice(reminder, clickerName, body, syncWith),
+    noticeTs,
+    syncPing:
+      added.length > 0
+        ? {
+            text: `🤝 ${escapeMrkdwn(clickerName)} needs sync with ${mentions(added)}`,
+            threadTs: previous?.noticeThreadTs ?? null,
+          }
+        : null,
   };
 }
 
@@ -96,7 +114,8 @@ export function registerBuzz(app: App): void {
 
     await ack();
 
-    const notice = recordBuzz({ fire, reminder, clicker, body: update, syncWith });
+    const clickerName = (await resolveDisplayNames(client, logger, [clicker])).get(clicker) ?? clicker;
+    const notice = recordBuzz({ fire, reminder, clicker, clickerName, body: update, syncWith });
     await settle(client, fire, reminder, clicker, source, notice, logger);
   });
 }
@@ -108,7 +127,7 @@ async function settle(
   reminder: Reminder,
   clicker: string,
   source: SkipSource,
-  notice: { text: string; noticeTs: string | null },
+  notice: BuzzNotice,
   logger: Logger,
 ): Promise<void> {
   try {
@@ -122,7 +141,7 @@ async function settle(
         unfurl_links: false,
         unfurl_media: false,
       });
-      if (posted.ts) setReportNotice(fire.id, clicker, posted.ts);
+      if (posted.ts) setReportNotice(fire.id, clicker, posted.ts, source.messageTs);
     }
   } catch (error) {
     logger.error("posting the update in the thread failed", error);
@@ -133,6 +152,19 @@ async function settle(
         text: "I recorded your update, but posting it in the thread failed.",
       })
       .catch(() => undefined);
+  }
+
+  if (notice.syncPing) {
+    try {
+      await client.chat.postMessage({
+        channel: source.channelId,
+        // Replies posted before the thread was stored fall back to the clicked post's thread.
+        thread_ts: notice.syncPing.threadTs ?? source.messageTs,
+        text: notice.syncPing.text,
+      });
+    } catch (error) {
+      logger.error("pinging the people added to sync-with failed", error);
+    }
   }
 
   try {

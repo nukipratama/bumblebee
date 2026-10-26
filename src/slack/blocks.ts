@@ -1,5 +1,5 @@
 import type { KnownBlock } from "@slack/web-api";
-import type { BodyFormat, Reminder, Skip } from "../domain/types.js";
+import type { BodyFormat, Reminder, Report, Skip } from "../domain/types.js";
 
 export const SKIP_ACTION = "reminder_skip";
 export const BUZZ_ACTION = "reminder_buzz";
@@ -20,7 +20,7 @@ export interface ReminderPost {
   host?: string;
   hostUnavailable?: boolean;
   skips: readonly Skip[];
-  reporters: readonly string[];
+  reporters: readonly Pick<Report, "userId" | "syncWith">[];
   skippable: boolean;
 }
 
@@ -78,8 +78,13 @@ function skipList(skips: readonly Skip[]): string {
   return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
 }
 
-function reporterList(reporters: readonly string[]): string {
-  return ["🐝 Buzzed in:", ...reporters.map((userId) => `• ${mention(userId)}`)].join("\n");
+function reporterLine({ userId, syncWith }: Pick<Report, "userId" | "syncWith">): string {
+  const sync = syncWith.length > 0 ? ` 🤝 ${syncWith.map(mention).join(" ")}` : "";
+  return `• ${mention(userId)}${sync}`;
+}
+
+function reporterList(reporters: ReminderPost["reporters"]): string {
+  return ["🐝 Buzzed in:", ...reporters.map(reporterLine)].join("\n");
 }
 
 /** Each dialect goes through the block that reads it as written. Never convert. */

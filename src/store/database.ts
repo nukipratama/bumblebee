@@ -235,6 +235,7 @@ const migrations: string[] = [
      notice_ts  TEXT,
      PRIMARY KEY (fire_id, user_id)
    )`,
+  `ALTER TABLE reminder_reports ADD COLUMN notice_thread_ts TEXT`,
 ];
 
 export function initDb(): void {

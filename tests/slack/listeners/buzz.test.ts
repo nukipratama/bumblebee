@@ -5,8 +5,17 @@ import { newReminder, useTempDatabase } from "../../helpers/store.js";
 useTempDatabase();
 
 const { initDb } = await import("../../../src/store/database.js");
-const { addSkip, getFireByMessageTs, getReminder, insertReminder, listHosts, listSkips, recordFire, replaceHosts } =
-  await import("../../../src/store/reminders.js");
+const {
+  addSkip,
+  getFireByMessageTs,
+  getReminder,
+  insertReminder,
+  listHosts,
+  listSkips,
+  recordFire,
+  replaceHosts,
+  setReportNotice,
+} = await import("../../../src/store/reminders.js");
 const { recordBuzz } = await import("../../../src/slack/listeners/buzz.js");
 
 initDb();
@@ -31,7 +40,14 @@ describe("buzzing in", () => {
     addSkip(fire.id, "U_C", null);
     const rosterBefore = listHosts(stored.id).map((host) => ({ ...host }));
 
-    const notice = recordBuzz({ fire, reminder: stored, clicker: "U_A", body: "shipped it", syncWith: ["U_B"] });
+    const notice = recordBuzz({
+      fire,
+      reminder: stored,
+      clicker: "U_A",
+      clickerName: "Alice",
+      body: "shipped it",
+      syncWith: ["U_B"],
+    });
 
     const after = getFireByMessageTs(MESSAGE_TS)!;
     assert.equal(after.hostUserId, "U_A");
@@ -41,7 +57,40 @@ describe("buzzing in", () => {
     assert.equal(notice.noticeTs, null);
     assert.equal(
       notice.text,
-      `🐝 <@U_A> buzzed in on \`${stored.code}\`:\nshipped it\n🤝 Needs sync with <@U_B>`,
+      `🐝 Alice buzzed in on \`${stored.code}\`:\nshipped it\n🤝 Needs sync with <@U_B>`,
     );
+    assert.equal(notice.syncPing, null);
+  });
+
+  it("names the buzzer as escaped text, so a name can't turn into a mention", () => {
+    const { fire, reminder } = firedReminder("1700000000.0002");
+    const notice = recordBuzz({ fire, reminder, clicker: "U_A", clickerName: "<!here> & co", body: "ok", syncWith: [] });
+    assert.equal(notice.text, `🐝 &lt;!here&gt; &amp; co buzzed in on \`${reminder.code}\`:\nok`);
+  });
+
+  it("pings only the people an edit adds to sync-with, in the thread the update lives in", () => {
+    const headsUpTs = "1700000000.0003";
+    const { fire, reminder } = firedReminder(headsUpTs);
+    const buzz = (syncWith: string[]) =>
+      recordBuzz({ fire, reminder, clicker: "U_A", clickerName: "Alice", body: "ok", syncWith });
+
+    assert.equal(buzz(["U_D"]).syncPing, null);
+    setReportNotice(fire.id, "U_A", "1700000000.0099", headsUpTs);
+
+    const added = buzz(["U_D", "U_E"]);
+    assert.equal(added.noticeTs, "1700000000.0099");
+    assert.deepEqual(added.syncPing, { text: "🤝 Alice needs sync with <@U_E>", threadTs: headsUpTs });
+    assert.equal(buzz(["U_D", "U_E"]).syncPing, null);
+    assert.equal(buzz([]).syncPing, null);
   });
 });
+
+let reminderCount = 0;
+
+function firedReminder(messageTs: string) {
+  const reminder = newReminder({ code: `buzz-${++reminderCount}` });
+  insertReminder(reminder);
+  const stored = getReminder(reminder.channelId, reminder.code)!;
+  recordFire({ reminderId: stored.id, firedOn: "2026-07-27", firedAt: new Date(), hostUserId: null, messageTs, nextLap: [] });
+  return { fire: getFireByMessageTs(messageTs)!, reminder: stored };
+}

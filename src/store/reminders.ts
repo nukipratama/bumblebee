@@ -40,7 +40,8 @@ const SKIP_COLUMNS = `user_id AS userId,
 const REPORT_COLUMNS = `user_id   AS userId,
          body,
          sync_with AS syncWith,
-         notice_ts AS noticeTs`;
+         notice_ts AS noticeTs,
+         notice_thread_ts AS noticeThreadTs`;
 
 const HOLIDAY_COLUMNS = `date,
          added_by         AS addedBy,
@@ -314,6 +315,7 @@ const toReport = (row: ReportRow): Report => ({
   body: row.body,
   syncWith: row.syncWith ? row.syncWith.split(" ") : [],
   noticeTs: row.noticeTs,
+  noticeThreadTs: row.noticeThreadTs,
 });
 
 export function getReport(fireId: number, userId: string): Report | undefined {
@@ -337,12 +339,10 @@ export function upsertReport(
   ).run(fireId, userId, new Date().toISOString(), body, syncWith.join(" "));
 }
 
-export function setReportNotice(fireId: number, userId: string, noticeTs: string): void {
-  stmt("UPDATE reminder_reports SET notice_ts = ? WHERE fire_id = ? AND user_id = ?").run(
-    noticeTs,
-    fireId,
-    userId,
-  );
+export function setReportNotice(fireId: number, userId: string, noticeTs: string, threadTs: string): void {
+  stmt(
+    "UPDATE reminder_reports SET notice_ts = ?, notice_thread_ts = ? WHERE fire_id = ? AND user_id = ?",
+  ).run(noticeTs, threadTs, fireId, userId);
 }
 
 export function listReports(fireId: number): Report[] {

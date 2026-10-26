@@ -22,7 +22,7 @@ export async function repost(
 ): Promise<void> {
   const hasRoster = listHosts(reminder.id).length > 0;
   const skips = listSkips(fire.id);
-  const reporters = listReports(fire.id).map((report) => report.userId);
+  const reporters = listReports(fire.id);
 
   for (const { ts, which } of postsOf(fire, reminder)) {
     const post = {
