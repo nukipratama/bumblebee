@@ -21,6 +21,8 @@ export interface ReminderPost {
   hostUnavailable?: boolean;
   skips: readonly Skip[];
   reporters: readonly Pick<Report, "userId" | "syncWith">[];
+  /** Skippers and buzzers are named, not mentioned: a `<@id>` here makes them follow the thread. */
+  names: ReadonlyMap<string, string>;
   skippable: boolean;
 }
 
@@ -56,6 +58,9 @@ export function escapeMrkdwn(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+/** Names someone without the notification a `<@id>` mention sends. */
+export const boldName = (name: string): string => `*${escapeMrkdwn(name)}*`;
+
 const BROADCAST_PATTERN = /<!(channel|here|everyone)>/gi;
 
 /** Neutralizes `<!channel>`/`<!here>`/`<!everyone>` in text headed for an `mrkdwn`
@@ -68,23 +73,26 @@ export function neutralizeBroadcasts(text: string): string {
 /** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
  *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
  *  time — so it's spliced in as-is rather than re-escaped here. */
-function skipLine(skip: Skip): string {
+function skipLine(skip: Skip, names: ReminderPost["names"]): string {
   const reason = skip.reason ? ` - ${skip.reason}` : "";
-  return `• ${mention(skip.userId)}${reason}`;
+  return `• ${boldName(names.get(skip.userId) ?? skip.userId)}${reason}`;
 }
 
 /** One line each: a reason runs long, and comma-joining would bury whose it is. */
-function skipList(skips: readonly Skip[]): string {
-  return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
+function skipList(skips: readonly Skip[], names: ReminderPost["names"]): string {
+  return ["🙅 Skip:", ...skips.map((skip) => skipLine(skip, names))].join("\n");
 }
 
-function reporterLine({ userId, syncWith }: Pick<Report, "userId" | "syncWith">): string {
+function reporterLine(
+  { userId, syncWith }: Pick<Report, "userId" | "syncWith">,
+  names: ReminderPost["names"],
+): string {
   const sync = syncWith.length > 0 ? ` 🤝 ${syncWith.map(mention).join(" ")}` : "";
-  return `• ${mention(userId)}${sync}`;
+  return `• ${boldName(names.get(userId) ?? userId)}${sync}`;
 }
 
-function reporterList(reporters: ReminderPost["reporters"]): string {
-  return ["🐝 Buzzed in:", ...reporters.map(reporterLine)].join("\n");
+function reporterList(reporters: ReminderPost["reporters"], names: ReminderPost["names"]): string {
+  return ["🐝 Buzzed in:", ...reporters.map((reporter) => reporterLine(reporter, names))].join("\n");
 }
 
 /** Each dialect goes through the block that reads it as written. Never convert. */
@@ -102,8 +110,8 @@ export function reminderBlocks(post: ReminderPost): KnownBlock[] {
   const context: string[] = [`⚙️ \`${post.code}\``];
   if (post.host) context.push(`🎙 Host: ${mention(post.host)}`);
   else if (post.hostUnavailable) context.push("⚠️ Nobody available to host");
-  if (post.reporters.length > 0) context.push(reporterList(post.reporters));
-  if (post.skips.length > 0) context.push(skipList(post.skips));
+  if (post.reporters.length > 0) context.push(reporterList(post.reporters, post.names));
+  if (post.skips.length > 0) context.push(skipList(post.skips, post.names));
 
   blocks.push({
     type: "context",

@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import type { NewReminder } from "../../src/domain/types.js";
-import { fakeClient, newReminder, useTempDatabase } from "../helpers/store.js";
+import { fakeClient, fakeLogger, newReminder, useTempDatabase } from "../helpers/store.js";
 
 useTempDatabase();
 
 const { initDb, stmt } = await import("../../src/store/database.js");
-const { getFireByMessageTs, insertReminder, getReminder, recordFire, replaceHosts, setJoinMessageTs } =
+const {
+  addSkip,
+  getFireByMessageTs,
+  insertReminder,
+  getReminder,
+  recordFire,
+  replaceHosts,
+  setJoinMessageTs,
+  upsertReport,
+} =
   await import("../../src/store/reminders.js");
 const { postsOf, repost } = await import("../../src/slack/repost.js");
 
@@ -68,7 +77,7 @@ describe("repost", () => {
     const current = getFireByMessageTs(MESSAGE_TS)!;
     const { client, updated } = fakeClient();
 
-    await repost(client, current, reminder, "C1");
+    await repost(client, current, reminder, "C1", fakeLogger());
 
     assert.deepEqual(
       updated.map((u) => u.ts),
@@ -81,11 +90,25 @@ describe("repost", () => {
     const { reminder, fire } = fired();
     const { client, updated } = fakeClient();
 
-    await repost(client, fire, reminder, "C1");
+    await repost(client, fire, reminder, "C1", fakeLogger());
 
     assert.deepEqual(
       updated.map((u) => u.ts),
       [MESSAGE_TS],
     );
+  });
+
+  it("names buzzers and skippers rather than mentioning them, so they don't follow the thread", async () => {
+    const { reminder, fire } = fired();
+    upsertReport(fire.id, "U_B", "shipped it", ["U_D"]);
+    addSkip(fire.id, "U_C", null);
+    const { client, updated } = fakeClient();
+
+    await repost(client, fire, reminder, "C1", fakeLogger());
+
+    const text = JSON.stringify(updated[0]!.blocks);
+    assert.match(text, /• \*Name of U_B\* 🤝 <@U_D>/);
+    assert.match(text, /• \*Name of U_C\*/);
+    assert.doesNotMatch(text, /<@U_B>|<@U_C>/);
   });
 });

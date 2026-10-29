@@ -223,7 +223,7 @@ async function settle(
   try {
     // Re-read rather than reuse `fire`: a handover has just changed the host.
     const current = getFireByMessageTs(source.messageTs) ?? fire;
-    await repost(client, current, reminder, source.channelId);
+    await repost(client, current, reminder, source.channelId, logger);
   } catch (error) {
     logger.error("updating the post failed", error);
     await client.chat

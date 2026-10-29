@@ -141,7 +141,7 @@ async function applyHostCurrent(
   const updated = { ...fire, hostUserId: userId, turnUserId: swap.turnUserId };
 
   try {
-    await repost(client, updated, reminder, entry.channelId);
+    await repost(client, updated, reminder, entry.channelId, logger);
   } catch (error) {
     logger.error("updating the post failed", error);
     return {

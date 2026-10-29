@@ -270,8 +270,8 @@ and an optional **Need to sync with** picker.
 ⚙️ `standup`
 🎙 Host: @alice
 🐝 Buzzed in:
-• @bob 🤝 @carl
-• @dana
+• *Bob* 🤝 @carl
+• *Dana*
 ```
 
 - **The update goes in the thread** under your name in bold, written as text so it doesn't ping you.
@@ -279,8 +279,9 @@ and an optional **Need to sync with** picker.
   has buzzed in and who each of them needs to sync with, so the host can see who has reported.
 - **Clicking again reopens the dialog prefilled**, and saving edits that same thread reply. An edit
   pings nobody, so anyone you add to sync-with gets a short new reply that mentions only them.
-- **Buzzing pings nobody but the people you pick.** The post's buzz list only changes through edits,
-  and a heads-up reminder's meeting post fills it in by an edit too.
+- **Buzzing pings nobody but the people you pick.** The post's buzz and skip lists name people in
+  bold rather than mentioning them, because Slack makes anyone mentioned in a post follow its thread
+  and notifies them of every later buzz.
 - **It never touches hosting.** Unlike `Skip me`, the host can buzz in and stays the host. The lap
   and the skip list don't change either.
 - **Anyone already skipping is passed over**, so a handover never names a host who has said they

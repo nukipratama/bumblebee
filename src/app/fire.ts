@@ -1,3 +1,4 @@
+import type { Logger } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import { daysBetween, localParts } from "../domain/clock.js";
 import { drawLap, pendingLap } from "../domain/rotation.js";
@@ -10,6 +11,7 @@ import {
   reminderBody,
   type ReminderPost,
 } from "../slack/blocks.js";
+import { postNames } from "../slack/repost.js";
 import {
   getFireForDate,
   getHoliday,
@@ -62,6 +64,7 @@ export async function fireReminder(
     host,
     skips: [],
     reporters: [],
+    names: new Map(),
     skippable: roster.length > 0,
   };
 
@@ -93,13 +96,14 @@ export async function fireReminder(
  * leaves no fire to join, so this falls back to firing outright — the day loses
  * its heads-up, but nobody loses their turn.
  */
-export async function postJoin(reminder: Reminder, client: WebClient): Promise<FireOutcome> {
+export async function postJoin(reminder: Reminder, client: WebClient, logger: Logger): Promise<FireOutcome> {
   const { date } = localParts(new Date());
 
   const fire = getFireForDate(reminder.id, date);
   if (!fire) return fireReminder(reminder, client, "meeting");
 
   const hasRoster = listHosts(reminder.id).length > 0;
+  const skips = listSkips(fire.id);
 
   // Read the host off the fire, never off the lap: a handover since the early
   // post has already moved it, and the lap has advanced past today either way.
@@ -108,8 +112,9 @@ export async function postJoin(reminder: Reminder, client: WebClient): Promise<F
     ...reminderBody(reminder, "meeting"),
     host: fire.hostUserId ?? undefined,
     hostUnavailable: hasRoster && !fire.hostUserId,
-    skips: listSkips(fire.id),
+    skips,
     reporters: [],
+    names: await postNames(client, logger, { skips, reporters: [] }),
     skippable: hasRoster,
   };
 
@@ -126,7 +131,7 @@ export async function postJoin(reminder: Reminder, client: WebClient): Promise<F
     // Buzzers are filled in by an edit, which notifies nobody; a fresh post would ping them all again.
     const reporters = listReports(fire.id);
     if (reporters.length > 0) {
-      const filled = { ...post, reporters };
+      const filled = { ...post, reporters, names: await postNames(client, logger, { skips, reporters }) };
       await client.chat.update({
         channel: reminder.channelId,
         ts: posted.ts,

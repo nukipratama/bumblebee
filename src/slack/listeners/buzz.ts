@@ -168,7 +168,7 @@ async function settle(
   }
 
   try {
-    await repost(client, getFireByMessageTs(source.messageTs) ?? fire, reminder, source.channelId);
+    await repost(client, getFireByMessageTs(source.messageTs) ?? fire, reminder, source.channelId, logger);
   } catch (error) {
     logger.error("updating the post failed", error);
   }
