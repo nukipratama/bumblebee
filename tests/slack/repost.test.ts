@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import type { NewReminder } from "../../src/domain/types.js";
-import { fakeClient, fakeLogger, newReminder, useTempDatabase } from "../helpers/store.js";
+import { fakeClient, newReminder, useTempDatabase } from "../helpers/store.js";
 
 useTempDatabase();
 
@@ -77,7 +77,7 @@ describe("repost", () => {
     const current = getFireByMessageTs(MESSAGE_TS)!;
     const { client, updated } = fakeClient();
 
-    await repost(client, current, reminder, "C1", fakeLogger());
+    await repost(client, current, reminder, "C1");
 
     assert.deepEqual(
       updated.map((u) => u.ts),
@@ -90,7 +90,7 @@ describe("repost", () => {
     const { reminder, fire } = fired();
     const { client, updated } = fakeClient();
 
-    await repost(client, fire, reminder, "C1", fakeLogger());
+    await repost(client, fire, reminder, "C1");
 
     assert.deepEqual(
       updated.map((u) => u.ts),
@@ -100,15 +100,15 @@ describe("repost", () => {
 
   it("names buzzers and skippers rather than mentioning them, so they don't follow the thread", async () => {
     const { reminder, fire } = fired();
-    upsertReport(fire.id, "U_B", "shipped it", ["U_D"]);
-    addSkip(fire.id, "U_C", null);
+    upsertReport(fire.id, "U_B", "Bob", "shipped it", ["U_D"]);
+    addSkip(fire.id, "U_C", "Cara", null);
     const { client, updated } = fakeClient();
 
-    await repost(client, fire, reminder, "C1", fakeLogger());
+    await repost(client, fire, reminder, "C1");
 
     const text = JSON.stringify(updated[0]!.blocks);
-    assert.match(text, /• \*Name of U_B\* 🤝 <@U_D>/);
-    assert.match(text, /• \*Name of U_C\*/);
+    assert.match(text, /• \*Bob\* 🤝 <@U_D>/);
+    assert.match(text, /• \*Cara\*/);
     assert.doesNotMatch(text, /<@U_B>|<@U_C>/);
   });
 });

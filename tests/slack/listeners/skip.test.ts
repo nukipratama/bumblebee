@@ -86,7 +86,7 @@ describe("the host hands over", () => {
 
   it("records no turn at all when nobody can take over", () => {
     const [fire, reminder] = fired(["U_A", "U_B"], ["U_A", "U_B"]);
-    addSkip(fire.id, "U_B", null);
+    addSkip(fire.id, "U_B", "B", null);
 
     applySkip({ fire, reminder, clicker: "U_A", clickerName: "Alice", now: MEETING });
 
@@ -345,7 +345,7 @@ describe("the reason", () => {
     applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "sick", now: MEETING });
 
     assert.equal(getSkip(fire.id, "U_B")?.reason, "sick");
-    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: "sick" }]);
+    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", userName: "Bob", reason: "sick" }]);
   });
 
   it("is null when the box was left empty, leaving the person still listed", () => {
@@ -353,7 +353,7 @@ describe("the reason", () => {
 
     applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", now: MEETING });
 
-    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: null }]);
+    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", userName: "Bob", reason: null }]);
   });
 
   it("is rewritten in place rather than added twice", () => {
@@ -362,7 +362,7 @@ describe("the reason", () => {
 
     applySkip({ fire, reminder, clicker: "U_B", clickerName: "Bob", reason: "on leave", now: MEETING });
 
-    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", reason: "on leave" }]);
+    assert.deepEqual(skipRows(fire.id), [{ userId: "U_B", userName: "Bob", reason: "on leave" }]);
   });
 
   it("is cleared without dropping the skip itself", () => {

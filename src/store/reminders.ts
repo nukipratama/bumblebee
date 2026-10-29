@@ -34,10 +34,12 @@ const FIRE_COLUMNS = `id,
          message_ts      AS messageTs,
          join_message_ts AS joinMessageTs`;
 
-const SKIP_COLUMNS = `user_id AS userId,
+const SKIP_COLUMNS = `user_id   AS userId,
+         user_name AS userName,
          reason`;
 
 const REPORT_COLUMNS = `user_id   AS userId,
+         user_name AS userName,
          body,
          sync_with AS syncWith,
          notice_ts AS noticeTs,
@@ -292,12 +294,12 @@ export function getSkip(fireId: number, userId: string): Skip | undefined {
  * `created_at` is left alone on conflict: it is what `listSkips` orders by, and
  * editing a reason must not move you down a list people are reading.
  */
-export function addSkip(fireId: number, userId: string, reason: string | null): void {
+export function addSkip(fireId: number, userId: string, userName: string, reason: string | null): void {
   stmt(
-    `INSERT INTO reminder_skips (fire_id, user_id, created_at, reason)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT (fire_id, user_id) DO UPDATE SET reason = excluded.reason`,
-  ).run(fireId, userId, new Date().toISOString(), reason);
+    `INSERT INTO reminder_skips (fire_id, user_id, user_name, created_at, reason)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (fire_id, user_id) DO UPDATE SET user_name = excluded.user_name, reason = excluded.reason`,
+  ).run(fireId, userId, userName, new Date().toISOString(), reason);
 }
 
 export function listSkips(fireId: number): Skip[] {
@@ -312,6 +314,7 @@ interface ReportRow extends Omit<Report, "syncWith"> {
 
 const toReport = (row: ReportRow): Report => ({
   userId: row.userId,
+  userName: row.userName,
   body: row.body,
   syncWith: row.syncWith ? row.syncWith.split(" ") : [],
   noticeTs: row.noticeTs,
@@ -329,14 +332,16 @@ export function getReport(fireId: number, userId: string): Report | undefined {
 export function upsertReport(
   fireId: number,
   userId: string,
+  userName: string,
   body: string,
   syncWith: readonly string[],
 ): void {
   stmt(
-    `INSERT INTO reminder_reports (fire_id, user_id, created_at, body, sync_with)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (fire_id, user_id) DO UPDATE SET body = excluded.body, sync_with = excluded.sync_with`,
-  ).run(fireId, userId, new Date().toISOString(), body, syncWith.join(" "));
+    `INSERT INTO reminder_reports (fire_id, user_id, user_name, created_at, body, sync_with)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (fire_id, user_id) DO UPDATE SET
+       user_name = excluded.user_name, body = excluded.body, sync_with = excluded.sync_with`,
+  ).run(fireId, userId, userName, new Date().toISOString(), body, syncWith.join(" "));
 }
 
 export function setReportNotice(fireId: number, userId: string, noticeTs: string, threadTs: string): void {

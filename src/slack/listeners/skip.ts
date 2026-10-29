@@ -72,7 +72,7 @@ function handOver(
   transaction(() => {
     setLap(reminder.id, keepsTurn ? [...remaining, clicker] : remaining);
     // They clicked Skip me, so they are skipping as well as not hosting.
-    addSkip(fire.id, clicker, reason);
+    addSkip(fire.id, clicker, clickerName, reason);
     setFireHost(fire.id, replacement ?? null);
     // The replacement is the one leaving the lap, so the turn is theirs now.
     setFireTurn(fire.id, replacement ?? null);
@@ -117,7 +117,7 @@ export function applySkip({ fire, reminder, clicker, clickerName, reason, now }:
   const stored = reason ?? null;
   if (fire.hostUserId === clicker) return handOver(fire, reminder, clicker, clickerName, stored);
 
-  addSkip(fire.id, clicker, stored);
+  addSkip(fire.id, clicker, clickerName, stored);
   return { announce: skipNotice(reminder, clickerName, stored) };
 }
 
@@ -223,7 +223,7 @@ async function settle(
   try {
     // Re-read rather than reuse `fire`: a handover has just changed the host.
     const current = getFireByMessageTs(source.messageTs) ?? fire;
-    await repost(client, current, reminder, source.channelId, logger);
+    await repost(client, current, reminder, source.channelId);
   } catch (error) {
     logger.error("updating the post failed", error);
     await client.chat

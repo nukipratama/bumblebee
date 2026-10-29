@@ -248,7 +248,7 @@ describe("host current", () => {
     const reminder = seed({ at: NOW_TIME });
     replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
     fireToday(reminder, "U_A");
-    addSkip(getFireForDate(reminder.id, TODAY)!.id, "U_B", null);
+    addSkip(getFireForDate(reminder.id, TODAY)!.id, "U_B", "B", null);
     const { client } = fakeClient();
 
     const result = await applyAction(entry(hostCurrent("U_B")), client, fakeLogger());

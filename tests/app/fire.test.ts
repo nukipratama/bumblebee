@@ -3,7 +3,7 @@ import { beforeEach, describe, it } from "node:test";
 import { localParts } from "../../src/domain/clock.js";
 import { pendingLap } from "../../src/domain/rotation.js";
 import type { Reminder } from "../../src/domain/types.js";
-import { fakeClient, fakeLogger, newReminder, useTempDatabase } from "../helpers/store.js";
+import { fakeClient, newReminder, useTempDatabase } from "../helpers/store.js";
 
 useTempDatabase();
 
@@ -303,7 +303,7 @@ describe("postJoin", () => {
     const { client, posted } = fakeClient();
     await fireReminder(reminder, client, "heads-up");
 
-    const outcome = await postJoin(reminder, client, fakeLogger());
+    const outcome = await postJoin(reminder, client);
 
     assert.deepEqual(outcome, { posted: true, host: "U_A" });
     assert.deepEqual(posted[1]!.blocks?.[0], { type: "markdown", text: "Standup time!" });
@@ -316,7 +316,7 @@ describe("postJoin", () => {
     await fireReminder(reminder, client, "heads-up");
     setFireHost(getFireByMessageTs("999.9")!.id, "U_B");
 
-    const outcome = await postJoin(reminder, client, fakeLogger());
+    const outcome = await postJoin(reminder, client);
 
     assert.deepEqual(outcome, { posted: true, host: "U_B" });
   });
@@ -326,7 +326,7 @@ describe("postJoin", () => {
     const { client } = fakeClient(async () => ({ ts: "999.9" }));
     await fireReminder(reminder, client, "heads-up");
 
-    await postJoin(reminder, client, fakeLogger());
+    await postJoin(reminder, client);
 
     assert.equal(getFireByMessageTs("999.9")?.joinMessageTs, "999.9");
   });
@@ -336,14 +336,14 @@ describe("postJoin", () => {
     let next = 0;
     const { client, posted, updated } = fakeClient(async () => ({ ts: `${++next}.1` }));
     await fireReminder(reminder, client, "heads-up");
-    upsertReport(getFireByMessageTs("1.1")!.id, "U_B", "shipped it", ["U_D"]);
+    upsertReport(getFireByMessageTs("1.1")!.id, "U_B", "B", "shipped it", ["U_D"]);
 
-    await postJoin(reminder, client, fakeLogger());
+    await postJoin(reminder, client);
 
     assert.doesNotMatch(JSON.stringify(posted[1]!.blocks), /U_B/);
     assert.equal(updated.length, 1);
     assert.equal(updated[0]!.ts, "2.1");
-    assert.match(JSON.stringify(updated[0]!.blocks), /• \*Name of U_B\* 🤝 <@U_D>/);
+    assert.match(JSON.stringify(updated[0]!.blocks), /• \*B\* 🤝 <@U_D>/);
   });
 
   it("fires outright when the lead time was missed, so nobody loses their turn", async () => {
@@ -351,7 +351,7 @@ describe("postJoin", () => {
     replaceHosts(reminder.id, ["U_A", "U_B"], ["U_A", "U_B"]);
     const { client, posted } = fakeClient();
 
-    const outcome = await postJoin(reminder, client, fakeLogger());
+    const outcome = await postJoin(reminder, client);
 
     assert.deepEqual(outcome, { posted: true, host: "U_A" });
     assert.equal(posted.length, 1);
@@ -364,7 +364,7 @@ describe("postJoin", () => {
     const { client } = fakeClient();
 
     await fireReminder(reminder, client, "heads-up");
-    await postJoin(getReminderById(reminder.id)!, client, fakeLogger());
+    await postJoin(getReminderById(reminder.id)!, client);
 
     assert.deepEqual(pendingLap(listHosts(reminder.id)), ["U_B", "U_C"]);
   });
@@ -374,7 +374,7 @@ describe("postJoin", () => {
     insertHoliday({ date: today(), addedBy: "U_A", addedInChannel: "C1" });
     const { client, posted } = fakeClient();
 
-    const outcome = await postJoin(reminder, client, fakeLogger());
+    const outcome = await postJoin(reminder, client);
 
     assert.equal(outcome.posted, false);
     assert.equal(posted.length, 0);

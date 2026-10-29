@@ -67,6 +67,8 @@ export interface Fire {
 
 export interface Skip {
   userId: string;
+  /** Null on rows written before names were stored. */
+  userName: string | null;
   /** Already mrkdwn-ready — see `renderRichText` in `slack/rich-text.ts`. */
   reason: string | null;
 }
@@ -74,6 +76,8 @@ export interface Skip {
 /** An async standup update: never touches hosting, unlike a skip. */
 export interface Report {
   userId: string;
+  /** Null on rows written before names were stored. */
+  userName: string | null;
   /** Already mrkdwn-ready — see `renderRichText` in `slack/rich-text.ts`. */
   body: string;
   syncWith: string[];

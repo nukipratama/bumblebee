@@ -72,9 +72,6 @@ export function fakeClient(
         return chatUpdate(args);
       },
     },
-    users: {
-      info: async ({ user }: { user: string }) => ({ user: { profile: { display_name: `Name of ${user}` } } }),
-    },
   } as unknown as WebClient;
 
   return { client, posted, updated };

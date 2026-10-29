@@ -31,7 +31,7 @@ export function assertJakarta(logger: Logger): void {
   );
 }
 
-type DuePost = (reminder: Reminder, client: WebClient, logger: Logger) => Promise<FireOutcome>;
+type DuePost = (reminder: Reminder, client: WebClient) => Promise<FireOutcome>;
 
 const postHeadsUp: DuePost = (reminder, client) => fireReminder(reminder, client, "heads-up");
 const postMeeting: DuePost = (reminder, client) => fireReminder(reminder, client, "meeting");
@@ -72,7 +72,7 @@ export async function runTick(app: App): Promise<void> {
     if (!post) continue;
 
     try {
-      const outcome = await post(reminder, app.client, app.logger);
+      const outcome = await post(reminder, app.client);
       if (outcome.posted) {
         const host = outcome.host ? ` (host ${outcome.host})` : "";
         app.logger.info(`fired \`${reminder.code}\` -> ${reminder.channelId}${host}`);

@@ -31,7 +31,6 @@ function post(overrides: Partial<ReminderPost> = {}): ReminderPost {
     bodyFormat: "markdown",
     skips: [],
     reporters: [],
-    names: NAMES,
     skippable: false,
     ...overrides,
   };
@@ -53,8 +52,9 @@ function hostContext(blocks: ReturnType<typeof reminderBlocks>): string | undefi
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
-const skip = (userId: string, reason: string | null = null) => ({ userId, reason });
-const reporter = (userId: string, syncWith: string[] = []) => ({ userId, syncWith });
+const userName = (userId: string): string | null => NAMES.get(userId) ?? null;
+const skip = (userId: string, reason: string | null = null) => ({ userId, userName: userName(userId), reason });
+const reporter = (userId: string, syncWith: string[] = []) => ({ userId, userName: userName(userId), syncWith });
 
 describe("reminderBlocks — body dialect", () => {
   it("renders a Markdown body through a markdown block", () => {
@@ -120,6 +120,11 @@ describe("reminderBlocks — host and skips", () => {
   it("gives each person their own line, in the order given", () => {
     const text = hostContext(reminderBlocks(post({ skips: [skip("U_BOB"), skip("U_DANA")] })));
     assert.equal(text, "🙅 Skip:\n• *Bob*\n• *Dana*");
+  });
+
+  it("falls back to the bold user id for a row stored before names were", () => {
+    const text = hostContext(reminderBlocks(post({ skips: [skip("U_ZED")] })));
+    assert.equal(text, "🙅 Skip:\n• *U_ZED*");
   });
 
   it("lists who buzzed in one per line, like the skips and ahead of them", () => {

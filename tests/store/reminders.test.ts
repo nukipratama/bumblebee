@@ -248,11 +248,11 @@ describe("skips", () => {
   it("overwrites a reason, and clears it when given null", () => {
     const fireId = fireWithSkips();
 
-    addSkip(fireId, "U_A", "sick");
-    addSkip(fireId, "U_A", "on leave");
+    addSkip(fireId, "U_A", "A", "sick");
+    addSkip(fireId, "U_A", "A", "on leave");
     assert.equal(getSkip(fireId, "U_A")?.reason, "on leave");
 
-    addSkip(fireId, "U_A", null);
+    addSkip(fireId, "U_A", "A", null);
     assert.equal(getSkip(fireId, "U_A")?.reason, null);
   });
 
@@ -269,7 +269,7 @@ describe("skips", () => {
       "2026-07-27T09:05:00.000Z",
     );
 
-    addSkip(fireId, "U_A", "changed my mind");
+    addSkip(fireId, "U_A", "A", "changed my mind");
 
     assert.deepEqual(listSkips(fireId).map((skip) => skip.userId), ["U_A", "U_B"]);
   });
@@ -348,11 +348,12 @@ describe("reports", () => {
   it("round-trips the update, who to sync with and the thread reply", () => {
     const fireId = fireWithReports();
 
-    upsertReport(fireId, "U_A", "shipped it", ["U_B", "U_C"]);
+    upsertReport(fireId, "U_A", "A", "shipped it", ["U_B", "U_C"]);
     setReportNotice(fireId, "U_A", "555.6", "555.5");
 
     assert.deepEqual({ ...getReport(fireId, "U_A") }, {
       userId: "U_A",
+      userName: "A",
       body: "shipped it",
       syncWith: ["U_B", "U_C"],
       noticeTs: "555.6",
@@ -362,11 +363,11 @@ describe("reports", () => {
 
   it("rewrites an edit in place, keeping the thread reply and the place in the list", () => {
     const fireId = fireWithReports();
-    upsertReport(fireId, "U_A", "first", ["U_B"]);
+    upsertReport(fireId, "U_A", "A", "first", ["U_B"]);
     setReportNotice(fireId, "U_A", "555.6", "555.5");
-    upsertReport(fireId, "U_Z", "later", []);
+    upsertReport(fireId, "U_Z", "Z", "later", []);
 
-    upsertReport(fireId, "U_A", "edited", []);
+    upsertReport(fireId, "U_A", "A", "edited", []);
 
     assert.deepEqual(
       listReports(fireId).map((report) => [report.userId, report.body, report.syncWith, report.noticeTs]),

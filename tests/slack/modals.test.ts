@@ -465,13 +465,13 @@ describe("skipModal", () => {
   });
 
   it("prefills an existing plain reason so it can be corrected", () => {
-    const { element } = reasonInput({ userId: "U_B", reason: "sick" });
+    const { element } = reasonInput({ userId: "U_B", userName: "B", reason: "sick" });
     assert.ok(element.type === "rich_text_input");
     assert.deepEqual(element.initial_value, richText([{ type: "text", text: "sick" }]));
   });
 
   it("prefills a stored mention as a live chip, not raw <@id> text", () => {
-    const { element } = reasonInput({ userId: "U_B", reason: "ask <@U_NUKI> first" });
+    const { element } = reasonInput({ userId: "U_B", userName: "B", reason: "ask <@U_NUKI> first" });
     assert.ok(element.type === "rich_text_input");
     assert.deepEqual(
       element.initial_value,
@@ -488,7 +488,7 @@ describe("skipModal", () => {
     assert.deepEqual(fresh.title, { type: "plain_text", text: "Skip me" });
     assert.deepEqual(fresh.submit, { type: "plain_text", text: "Skip" });
 
-    const again = modal({ userId: "U_B", reason: null });
+    const again = modal({ userId: "U_B", userName: "B", reason: null });
     assert.deepEqual(again.title, { type: "plain_text", text: "You're skipping" });
     assert.deepEqual(again.submit, { type: "plain_text", text: "Save" });
   });
@@ -588,7 +588,7 @@ describe("plannedEdit — the heads-up", () => {
 
 describe("buzzModal", () => {
   const source = { channelId: "C1", messageTs: "1700000000.0001" };
-  const report: Report = { userId: "U_A", body: "shipped it", syncWith: ["U_B"], noticeTs: "1.2", noticeThreadTs: "1.1" };
+  const report: Report = { userId: "U_A", userName: "A", body: "shipped it", syncWith: ["U_B"], noticeTs: "1.2", noticeThreadTs: "1.1" };
 
   const modal = (existing?: Report) => buzzModal(source, existing) as ModalView;
   const input = (existing: Report | undefined, index: number) => modal(existing).blocks[index] as InputBlock;
