@@ -37,7 +37,7 @@ describe("buzzing in", () => {
       nextLap: ["U_B", "U_C"],
     });
     const fire = getFireByMessageTs(MESSAGE_TS)!;
-    addSkip(fire.id, "U_C", null);
+    addSkip(fire.id, "U_C", "C", null);
     const rosterBefore = listHosts(stored.id).map((host) => ({ ...host }));
 
     const notice = recordBuzz({

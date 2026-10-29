@@ -336,14 +336,14 @@ describe("postJoin", () => {
     let next = 0;
     const { client, posted, updated } = fakeClient(async () => ({ ts: `${++next}.1` }));
     await fireReminder(reminder, client, "heads-up");
-    upsertReport(getFireByMessageTs("1.1")!.id, "U_B", "shipped it", ["U_D"]);
+    upsertReport(getFireByMessageTs("1.1")!.id, "U_B", "B", "shipped it", ["U_D"]);
 
     await postJoin(reminder, client);
 
     assert.doesNotMatch(JSON.stringify(posted[1]!.blocks), /U_B/);
     assert.equal(updated.length, 1);
     assert.equal(updated[0]!.ts, "2.1");
-    assert.match(JSON.stringify(updated[0]!.blocks), /• <@U_B> 🤝 <@U_D>/);
+    assert.match(JSON.stringify(updated[0]!.blocks), /• \*B\* 🤝 <@U_D>/);
   });
 
   it("fires outright when the lead time was missed, so nobody loses their turn", async () => {

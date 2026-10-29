@@ -6,7 +6,16 @@ import { fakeClient, newReminder, useTempDatabase } from "../helpers/store.js";
 useTempDatabase();
 
 const { initDb, stmt } = await import("../../src/store/database.js");
-const { getFireByMessageTs, insertReminder, getReminder, recordFire, replaceHosts, setJoinMessageTs } =
+const {
+  addSkip,
+  getFireByMessageTs,
+  insertReminder,
+  getReminder,
+  recordFire,
+  replaceHosts,
+  setJoinMessageTs,
+  upsertReport,
+} =
   await import("../../src/store/reminders.js");
 const { postsOf, repost } = await import("../../src/slack/repost.js");
 
@@ -87,5 +96,19 @@ describe("repost", () => {
       updated.map((u) => u.ts),
       [MESSAGE_TS],
     );
+  });
+
+  it("names buzzers and skippers rather than mentioning them, so they don't follow the thread", async () => {
+    const { reminder, fire } = fired();
+    upsertReport(fire.id, "U_B", "Bob", "shipped it", ["U_D"]);
+    addSkip(fire.id, "U_C", "Cara", null);
+    const { client, updated } = fakeClient();
+
+    await repost(client, fire, reminder, "C1");
+
+    const text = JSON.stringify(updated[0]!.blocks);
+    assert.match(text, /• \*Bob\* 🤝 <@U_D>/);
+    assert.match(text, /• \*Cara\*/);
+    assert.doesNotMatch(text, /<@U_B>|<@U_C>/);
   });
 });

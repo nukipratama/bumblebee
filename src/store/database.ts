@@ -236,6 +236,8 @@ const migrations: string[] = [
      PRIMARY KEY (fire_id, user_id)
    )`,
   `ALTER TABLE reminder_reports ADD COLUMN notice_thread_ts TEXT`,
+  `ALTER TABLE reminder_skips ADD COLUMN user_name TEXT`,
+  `ALTER TABLE reminder_reports ADD COLUMN user_name TEXT`,
 ];
 
 export function initDb(): void {

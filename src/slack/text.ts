@@ -3,11 +3,9 @@ import { EVERY_DAY, WEEKDAY_COLUMN } from "../domain/days.js";
 import { hasHosted } from "../domain/rotation.js";
 import { formatCadence, leadTime, nextFire } from "../domain/schedule.js";
 import type { Host, Reminder } from "../domain/types.js";
-import { escapeMrkdwn } from "./blocks.js";
+export { boldName } from "./blocks.js";
 
 export const mention = (userId: string): string => `<@${userId}>`;
-/** Names someone without the notification a `<@id>` mention sends. */
-export const boldName = (name: string): string => `*${escapeMrkdwn(name)}*`;
 export const mentionList = (userIds: readonly string[]): string => userIds.map(mention).join(", ");
 
 export function formatDays(days: string): string {

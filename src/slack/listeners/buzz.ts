@@ -44,7 +44,7 @@ export interface BuzzNotice {
 /** Writes only the report: hosting, the lap and skips are left alone whoever clicks. */
 export function recordBuzz({ fire, reminder, clicker, clickerName, body, syncWith }: BuzzRequest): BuzzNotice {
   const previous = getReport(fire.id, clicker);
-  upsertReport(fire.id, clicker, body, syncWith);
+  upsertReport(fire.id, clicker, clickerName, body, syncWith);
   const noticeTs = previous?.noticeTs ?? null;
   const added = noticeTs ? syncWith.filter((userId) => !previous?.syncWith.includes(userId)) : [];
   return {

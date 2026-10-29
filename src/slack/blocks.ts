@@ -20,7 +20,7 @@ export interface ReminderPost {
   host?: string;
   hostUnavailable?: boolean;
   skips: readonly Skip[];
-  reporters: readonly Pick<Report, "userId" | "syncWith">[];
+  reporters: readonly Pick<Report, "userId" | "userName" | "syncWith">[];
   skippable: boolean;
 }
 
@@ -56,6 +56,9 @@ export function escapeMrkdwn(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+/** Names someone without the notification a `<@id>` mention sends. */
+export const boldName = (name: string): string => `*${escapeMrkdwn(name)}*`;
+
 const BROADCAST_PATTERN = /<!(channel|here|everyone)>/gi;
 
 /** Neutralizes `<!channel>`/`<!here>`/`<!everyone>` in text headed for an `mrkdwn`
@@ -65,12 +68,16 @@ export function neutralizeBroadcasts(text: string): string {
   return text.replace(BROADCAST_PATTERN, (_, kind: string) => `@${kind}`);
 }
 
+/** Skippers and buzzers are named, not mentioned: a `<@id>` on the post makes them follow its thread. */
+const listedName = ({ userId, userName }: Pick<Skip, "userId" | "userName">): string =>
+  boldName(userName ?? userId);
+
 /** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
  *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
  *  time — so it's spliced in as-is rather than re-escaped here. */
 function skipLine(skip: Skip): string {
   const reason = skip.reason ? ` - ${skip.reason}` : "";
-  return `• ${mention(skip.userId)}${reason}`;
+  return `• ${listedName(skip)}${reason}`;
 }
 
 /** One line each: a reason runs long, and comma-joining would bury whose it is. */
@@ -78,9 +85,10 @@ function skipList(skips: readonly Skip[]): string {
   return ["🙅 Skip:", ...skips.map(skipLine)].join("\n");
 }
 
-function reporterLine({ userId, syncWith }: Pick<Report, "userId" | "syncWith">): string {
+function reporterLine(reporter: ReminderPost["reporters"][number]): string {
+  const { syncWith } = reporter;
   const sync = syncWith.length > 0 ? ` 🤝 ${syncWith.map(mention).join(" ")}` : "";
-  return `• ${mention(userId)}${sync}`;
+  return `• ${listedName(reporter)}${sync}`;
 }
 
 function reporterList(reporters: ReminderPost["reporters"]): string {

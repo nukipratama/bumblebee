@@ -71,7 +71,7 @@ describe("checkHostCurrent", () => {
   it("refuses someone who already skipped today", () => {
     const reminder = seed(["U_A", "U_B"]);
     fireToday(reminder, "U_A");
-    addSkip(getFireForDate(reminder.id, TODAY)!.id, "U_B", null);
+    addSkip(getFireForDate(reminder.id, TODAY)!.id, "U_B", "B", null);
 
     const result = checkHostCurrent(reminder, "U_B", Date.now());
 
