@@ -244,8 +244,8 @@ reason — which is **optional**: submit it empty and you're simply listed as sk
 ⚙️ `standup`
 🎙 Host: @alice
 🔕 Skip:
-• @bob - sick, back tomorrow
-• @dana
+• *Bob* - sick, back tomorrow
+• *Dana*
 ```
 
 - **The reason sits on the post**, one line per person, in full. Leave the box empty and you're

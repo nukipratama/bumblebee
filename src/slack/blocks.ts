@@ -68,13 +68,13 @@ export function neutralizeBroadcasts(text: string): string {
   return text.replace(BROADCAST_PATTERN, (_, kind: string) => `@${kind}`);
 }
 
-/** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
- *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
- *  time — so it's spliced in as-is rather than re-escaped here. */
 /** Skippers and buzzers are named, not mentioned: a `<@id>` on the post makes them follow its thread. */
 const listedName = ({ userId, userName }: Pick<Skip, "userId" | "userName">): string =>
   boldName(userName ?? userId);
 
+/** `skip.reason` is already mrkdwn-ready (escaped text runs, real `<@user>`/
+ *  `<!subteam^id>` mentions) — produced once by `renderRichText` at submission
+ *  time — so it's spliced in as-is rather than re-escaped here. */
 function skipLine(skip: Skip): string {
   const reason = skip.reason ? ` - ${skip.reason}` : "";
   return `• ${listedName(skip)}${reason}`;
